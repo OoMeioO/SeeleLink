@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import '@xterm/xterm/css/xterm.css';
 
-type TabType = 'ssh' | 'serial' | 'powershell' | 'websocket';
+type TabType = 'ssh' | 'serial' | 'powershell' | 'cmd' | 'websocket';
 
 interface SavedConn {
   id: string; name: string; type: TabType;
@@ -18,16 +18,20 @@ interface ConnectionTab {
   connId: string;
   conn: SavedConn;
   isConnected: boolean;
+  isInitializing?: boolean;
   term: any;
+  fitAddon: any;
   containerRef: React.RefObject<HTMLDivElement>;
 }
 
 declare global {
   interface Window {
     electronAPI?: {
-      psConnect: () => Promise<void>; psExecute: (cmd: string) => Promise<void>; psDisconnect: () => Promise<void>;
-      onPsData: (callback: (data: string) => void) => void;
-      onPsError: (callback: (data: string) => void) => void;
+      psConnect: (connId: string) => Promise<void>; psExecute: (connId: string, cmd: string) => Promise<void>; psDisconnect: (connId: string) => Promise<void>;
+      onPsData: (connId: string, callback: (data: string) => void) => void;
+      onPsError: (connId: string, callback: (data: string) => void) => void;
+      cmdConnect: (connId: string) => Promise<void>; cmdExecute: (connId: string, cmd: string) => Promise<void>; cmdDisconnect: (connId: string) => Promise<void>;
+      onCmdData: (connId: string, callback: (data: string) => void) => void;
       sshConnect: (config: { connId: string; host: string; username: string; password?: string }) => Promise<void>;
       sshDisconnect: (connId: string) => Promise<void>; 
       sshExecute: (connId: string, cmd: string) => Promise<void>;
@@ -101,9 +105,20 @@ export default function App() {
   const [showCmdModal, setShowCmdModal] = useState(false);
   const [editingButton, setEditingButton] = useState<CommandButton | null>(null);
   const [buttonForm, setButtonForm] = useState({ name: '', commands: '' });
-
-  const connectedRefs = useRef<Map<string, boolean>>(new Map());
   
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+
+  // Use refs to avoid stale closure issues
+  const connectedRefs = useRef<Map<string, boolean>>(new Map());
+  const connTabsRef = useRef(connTabs);
+  const initRef = useRef<Set<string>>(new Set());
+  
+  // Keep connTabsRef in sync
+  useEffect(() => {
+    connTabsRef.current = connTabs;
+  }, [connTabs]);
+
   const activeTabData = connTabs.find(t => t.id === activeConnTabId);
 
   useEffect(() => { loadConnections(); }, []);
@@ -114,114 +129,170 @@ export default function App() {
     }
   }, [activeTabData?.conn?.id]);
 
-  const initTerminal = useCallback(async (tab: ConnectionTab) => {
-    if (tab.term) return; // Already initialized
-    
-    const { Terminal } = await import('@xterm/xterm');
-    const { FitAddon } = await import('@xterm/addon-fit');
-    
-    const term = new Terminal({ cursorBlink: true, fontSize: 14, fontFamily: 'monospace', theme: { background: '#0d0d0d', foreground: '#d4d4d4' }, rows: 24, cols: 80 });
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    
-    tab.term = term;
-    connectedRefs.current.set(tab.id, tab.isConnected);
-    
-    // Handler reads from connectedRefs Map to avoid closure issues
-    term.onData((data: string) => {
-      const isConnected = connectedRefs.current.get(tab.id) || false;
-      if (window.electronAPI && isConnected) {
-        if (tab.conn.type === 'ssh') {
-          window.electronAPI.sshExecute(tab.connId, data);
-        } else if (tab.conn.type === 'serial') {
-          window.electronAPI.serialExecute(tab.connId, data);
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClick = () => setContextMenu(prev => ({ ...prev, visible: false }));
+    if (contextMenu.visible) {
+      document.addEventListener('click', handleClick);
+      return () => document.removeEventListener('click', handleClick);
+    }
+  }, [contextMenu.visible]);
+
+  // Handle Ctrl+Shift+C for copy
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+        const selection = window.getSelection()?.toString() || '';
+        if (selection && activeTabData?.term) {
+          navigator.clipboard.writeText(selection);
+          e.preventDefault();
         }
       }
-    });
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [activeTabData]);
+
+  // Context menu handler for terminal
+  const handleTerminalContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Get selection from xterm
+    const selection = activeTabData?.term?.getSelection?.() || '';
+    if (selection) {
+      setContextMenu({ x: e.clientX, y: e.clientY, visible: true });
+    }
+  };
+
+  const handleCopySelection = () => {
+    const selection = activeTabData?.term?.getSelection?.() || '';
+    if (selection) {
+      navigator.clipboard.writeText(selection);
+    }
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  const initTerminal = useCallback(async (tab: ConnectionTab) => {
+    const tabId = tab.id;
+    if (initRef.current.has(tabId)) return; // Already initializing
+    if (tab.term) return; // Already has terminal
+    initRef.current.add(tabId);
     
-    // Register data listeners
-    if (tab.conn.type === 'ssh') {
-      window.electronAPI?.onSshData(tab.connId, (data: string) => {
-        if (tab.term) tab.term.write(data);
-      });
+    const container = tab.containerRef?.current;
+    if (!container) {
+      initRef.current.delete(tabId);
+      return;
     }
     
-    setConnTabs(prev => prev.map(t => t.id === tab.id ? { ...t, term } : t));
+    try {
+      const { Terminal } = await import('@xterm/xterm');
+      const { FitAddon } = await import('@xterm/addon-fit');
+      
+      const term = new Terminal({ 
+        cursorBlink: true, 
+        fontSize: 14, 
+        fontFamily: 'Consolas, monospace', 
+        theme: { background: '#0d0d0d', foreground: '#d4d4d4' }, 
+        allowTransparency: false,
+        cursorStyle: 'block',
+        cursorInactiveStyle: 'blink',
+        bellStyle: 'none',
+        enableBold: true,
+        drawBoldTextInBrightColors: true,
+        convertEol: true,
+        windowsMode: true,
+      });
+      
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      
+      // Update the tab in state with term and fitAddon
+      setConnTabs(prev => prev.map(t => t.id === tabId ? { ...t, term, fitAddon } : t));
+      connectedRefs.current.set(tabId, tab.isConnected);
+      
+      // PowerShell input - pass keystrokes directly to PTY backend
+      term.onData((data: string) => {
+        const isConnected = connectedRefs.current.get(tabId) || false;
+        if (window.electronAPI && isConnected) {
+          if (tab.conn.type === 'ssh') {
+            window.electronAPI.sshExecute(tab.connId, data);
+          } else if (tab.conn.type === 'serial') {
+            window.electronAPI.serialExecute(tab.connId, data);
+          } else if (tab.conn.type === 'powershell') {
+            // Direct passthrough to PTY
+            window.electronAPI.psExecute(tab.connId, data);
+          } else if (tab.conn.type === 'cmd') {
+            // Direct passthrough to PTY
+            window.electronAPI.cmdExecute(tab.connId, data);
+          }
+        }
+      });
+      
+      if (tab.conn.type === 'ssh') {
+        window.electronAPI?.onSshData(tab.connId, (data: string) => { if (term) term.write(data); });
+      }
+      
+      term.open(container);
+      fitAddon.fit();
+      term.focus();
+      
+    } catch (e) {
+      console.error('Terminal init error:', e);
+      initRef.current.delete(tabId);
+    }
   }, []);
 
-  // Attach terminal to DOM when tab becomes active
+  // Initialize terminal when active tab changes
   useEffect(() => {
-    if (!activeTabData) return;
-    
-    const tab = activeTabData;
-    const container = tab.containerRef.current;
-    if (!container || !tab.term) return;
-    
-    // Check if terminal is already open in this container
-    // If not, open it
-    try {
-      // xterm needs to be opened in the container
-      if (!tab.term.element || tab.term.element.parentElement !== container) {
-        tab.term.open(container);
+    if (activeConnTabId) {
+      const tab = connTabs.find(t => t.id === activeConnTabId);
+      if (tab) {
+        initTerminal(tab);
       }
-      tab.term.focus();
-    } catch (e) {
-      // Terminal might already be open elsewhere, try to focus instead
-      try { tab.term.focus(); } catch (e2) {}
     }
-  }, [activeConnTabId]);
+  }, [activeConnTabId, initTerminal, connTabs]);
 
   const loadConnections = async () => { if (window.electronAPI) setSavedConns(await window.electronAPI.loadConnections()); };
   const loadCommands = async (connId: string) => { if (window.electronAPI) setCommandButtons(await window.electronAPI.loadCommands(connId)); };
   const saveCommands = async (connId: string, commands: CommandButton[]) => { if (window.electronAPI) await window.electronAPI.saveCommands(connId, commands); };
 
   const openConnection = async (conn: SavedConn) => {
-    // Always create a NEW tab for multi-instance support
-    // Don't check for existing tabs with same connection
-    
     const newTab: ConnectionTab = {
       id: `tab_${Date.now()}`,
-      connId: `${conn.id}_${Date.now()}`, // Unique connection ID with timestamp
+      connId: `${conn.id}_${Date.now()}`,
       conn,
       isConnected: false,
       term: null,
+      fitAddon: null,
       containerRef: React.createRef<HTMLDivElement>(),
     };
     
     connectedRefs.current.set(newTab.id, false);
     setConnTabs(prev => [...prev, newTab]);
     setActiveConnTabId(newTab.id);
-    
-    // Initialize terminal async
-    initTerminal(newTab);
   };
 
   const closeTab = async (tabId: string) => {
-    const tab = connTabs.find(t => t.id === tabId);
+    const tab = connTabsRef.current.find(t => t.id === tabId);
     if (!tab) return;
     
-    // Dispose terminal
     if (tab.term) {
       try { tab.term.dispose(); } catch (e) {}
     }
+    initRef.current.delete(tabId);
     
     if (tab.isConnected && window.electronAPI) {
-      if (tab.conn.type === 'ssh') {
-        await window.electronAPI.sshDisconnect(tab.connId); // connId is unique per tab instance
-      } else if (tab.conn.type === 'powershell') {
-        await window.electronAPI.psDisconnect();
-      }
+      if (tab.conn.type === 'ssh') await window.electronAPI.sshDisconnect(tab.connId);
+      else if (tab.conn.type === 'powershell') await window.electronAPI.psDisconnect(tab.connId);
+      else if (tab.conn.type === 'serial') await window.electronAPI.serialDisconnect(tab.connId);
     }
     
     connectedRefs.current.delete(tabId);
     setConnTabs(prev => prev.filter(t => t.id !== tabId));
-    if (activeConnTabId === tabId) {
-      const remaining = connTabs.filter(t => t.id !== tabId);
-      setActiveConnTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
-    }
+    const remaining = connTabsRef.current.filter(t => t.id !== tabId);
+    setActiveConnTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
   };
 
-  const handleConnect = async () => {
+  const handleConnect = useCallback(async () => {
     if (!activeTabData || !window.electronAPI) return;
     const tab = activeTabData;
     
@@ -232,26 +303,49 @@ export default function App() {
     
     try {
       if (tab.conn.type === 'ssh') {
-        await window.electronAPI.sshConnect({
-          connId: tab.connId,
-          host: tab.conn.host || '',
-          username: tab.conn.username || '',
-          password: tab.conn.password || ''
+        window.electronAPI.onSshData(tab.connId, (data: string) => {
+          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
+          if (currentTab?.term) currentTab.term.write(data);
         });
+        await window.electronAPI.sshConnect({ connId: tab.connId, host: tab.conn.host || '', username: tab.conn.username || '', password: tab.conn.password || '' });
       } else if (tab.conn.type === 'powershell') {
-        await window.electronAPI.psConnect();
+        // Register listeners BEFORE connect
+        window.electronAPI.onPsData(tab.connId, (data: string) => {
+          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
+          if (currentTab?.term) {
+            // For PowerShell: remove backspace and bell characters that cause display issues
+            // but let xterm handle ANSI colors and cursor positioning
+            const clean = data
+              .replace(/\x08/g, '') // Remove backspace
+              .replace(/\x07/g, ''); // Remove bell
+            currentTab.term.write(clean);
+            // Auto-scroll to bottom
+            currentTab.term.scrollToBottom();
+          }
+        });
+        window.electronAPI.onPsError(tab.connId, (data: string) => {
+          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
+          if (currentTab?.term) currentTab.term.write('[ERR] ' + data);
+        });
+        await window.electronAPI.psConnect(tab.connId);
+      } else if (tab.conn.type === 'cmd') {
+        window.electronAPI.onCmdData(tab.connId, (data: string) => {
+          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
+          if (currentTab?.term) {
+            const clean = data.replace(/\x08/g, '').replace(/\x07/g, '');
+            currentTab.term.write(clean);
+            currentTab.term.scrollToBottom();
+          }
+        });
+        await window.electronAPI.cmdConnect(tab.connId);
       } else if (tab.conn.type === 'serial') {
-        // Serial connection
         window.electronAPI.onSerialData(tab.connId, (data: string) => {
-          if (tab.term) tab.term.write(data);
+          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
+          if (currentTab?.term) currentTab.term.write(data);
         });
-        const result = await window.electronAPI.serialConnect({
-          connId: tab.connId,
-          port: tab.conn.serialPort || 'COM1',
-          baudRate: tab.conn.baudRate || '115200'
-        });
+        const result = await window.electronAPI.serialConnect({ connId: tab.connId, port: tab.conn.serialPort || 'COM1', baudRate: tab.conn.baudRate || '115200' });
         if (result === 'port in use') {
-          if (tab.term) tab.term.write('\r\n[Error] ' + tab.conn.serialPort + ' is already in use by another connection. Please disconnect the existing connection first.\r\n');
+          if (tab.term) tab.term.write('\r\n[Error] ' + tab.conn.serialPort + ' is already in use\r\n');
           return;
         }
       }
@@ -260,31 +354,27 @@ export default function App() {
     } catch (e: any) {
       if (tab.term) tab.term.write('\r\n[Error] ' + e.message + '\r\n');
     }
-  };
+  }, [activeTabData]);
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = useCallback(async () => {
     if (!activeTabData || !window.electronAPI) return;
     const tab = activeTabData;
     
-    if (tab.conn.type === 'ssh') {
-      await window.electronAPI.sshDisconnect(tab.connId);
-    } else if (tab.conn.type === 'powershell') {
-      await window.electronAPI.psDisconnect();
-    } else if (tab.conn.type === 'serial') {
-      await window.electronAPI.serialDisconnect(tab.connId);
-    }
+    if (tab.conn.type === 'ssh') await window.electronAPI.sshDisconnect(tab.connId);
+    else if (tab.conn.type === 'powershell') await window.electronAPI.psDisconnect(tab.connId);
+    else if (tab.conn.type === 'cmd') await window.electronAPI.cmdDisconnect(tab.connId);
+    else if (tab.conn.type === 'serial') await window.electronAPI.serialDisconnect(tab.connId);
     
     connectedRefs.current.set(tab.id, false);
     if (tab.term) tab.term.write('\r\n[Disconnected]\r\n');
     setConnTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isConnected: false } : t));
-  };
+  }, [activeTabData]);
 
   const handleButtonClick = async (button: CommandButton) => {
     if (!activeTabData || !window.electronAPI || !activeTabData.isConnected) return;
     for (const cmd of button.commands) {
-      if (activeTabData.conn.type === 'ssh') {
-        await window.electronAPI.sshExecute(activeTabData.connId, cmd + '\n');
-      }
+      if (activeTabData.conn.type === 'ssh') await window.electronAPI.sshExecute(activeTabData.connId, cmd + '\n');
+      else if (activeTabData.conn.type === 'powershell') await window.electronAPI.psExecute(activeTabData.connId, cmd + '\n');
       await new Promise(r => setTimeout(r, 100));
     }
   };
@@ -292,29 +382,12 @@ export default function App() {
   const handleSaveConn = async () => {
     if (!window.electronAPI) return;
     let id: string;
-    if (activeTab === 'ssh') {
-      id = `${form.host}-${form.username}`;
-    } else if (activeTab === 'powershell') {
-      id = 'local-powershell';
-    } else if (activeTab === 'serial') {
-      // For serial, use unique ID based on name + port + baudRate
-      const name = form.name || `Serial on ${form.serialPort}`;
-      id = `serial-${name}-${form.serialPort}-${form.baudRate}`;
-    } else {
-      id = `${form.url}`;
-    }
-    const conn: SavedConn = { 
-      id, 
-      name: form.name || (activeTab === 'ssh' ? `${form.host}` : activeTab === 'powershell' ? 'Local PowerShell' : activeTab === 'serial' ? `Serial on ${form.serialPort}` : form.url), 
-      type: activeTab, 
-      host: form.host, 
-      port: form.port, 
-      username: form.username, 
-      password: form.password, 
-      serialPort: form.serialPort, 
-      baudRate: form.baudRate, 
-      url: form.url 
-    };
+    if (activeTab === 'ssh') id = `${form.host}-${form.username}`;
+    else if (activeTab === 'powershell') id = 'local-powershell';
+    else if (activeTab === 'serial') id = `serial-${form.name || 'untitled'}-${form.serialPort}-${form.baudRate}`;
+    else id = form.url;
+    
+    const conn: SavedConn = { id, name: form.name || (activeTab === 'ssh' ? form.host : activeTab === 'serial' ? `Serial on ${form.serialPort}` : form.url), type: activeTab, host: form.host, port: form.port, username: form.username, password: form.password, serialPort: form.serialPort, baudRate: form.baudRate, url: form.url };
     await window.electronAPI.saveConnection(conn);
     await loadConnections();
     setShowModal(false);
@@ -344,25 +417,22 @@ export default function App() {
       <div style={styles.header}><span style={styles.logo}>⚡</span><span>SeeleLink</span></div>
       
       <div style={styles.tabBar}>
-        <button style={activeTab === 'ssh' ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => setActiveTab('ssh')}>🖥️ SSH</button>
-        <button style={activeTab === 'serial' ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => setActiveTab('serial')}>📡 SERIAL</button>
-        <button style={activeTab === 'powershell' ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => setActiveTab('powershell')}>💻 POWERSHELL</button>
-        <button style={activeTab === 'websocket' ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => setActiveTab('websocket')}>🌐 WEBSOCKET</button>
+        {(['ssh', 'serial', 'powershell', 'cmd', 'websocket'] as TabType[]).map(t => (
+          <button key={t} style={activeTab === t ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => { setActiveTab(t); setActiveConnTabId(null); }}>{t === 'ssh' && '🖥️'} {t === 'serial' && '📡'} {t === 'powershell' && '💻'} {t === 'cmd' && '📝'} {t === 'websocket' && '🌐'} <span style={{marginLeft: 6}}>{t.toUpperCase()}</span></button>
+        ))}
       </div>
 
       <div style={styles.main}>
         <div style={styles.sidebar}>
           <div style={styles.sidebarHeader}>
-            <span style={{ fontWeight: 600, fontSize: 13 }}>Connections</span>
-            <button style={styles.addBtn} onClick={async () => { 
+            <span style={{fontWeight: 600, fontSize: 13}}>Connections</span>
+            <button style={styles.addBtn} onClick={async () => {
               if (activeTab === 'serial' && window.electronAPI) {
                 const ports = await window.electronAPI.serialList();
                 setAvailableComPorts(ports);
-                setForm({ name: '', host: '', port: '22', username: '', password: '', serialPort: ports[0] || '', baudRate: '115200', url: 'ws://localhost:8080' });
-              } else {
-                setForm({ name: '', host: '', port: '22', username: '', password: '', serialPort: '', baudRate: '115200', url: 'ws://localhost:8080' });
+                setForm({...form, serialPort: ports[0] || ''});
               }
-              setShowModal(true); 
+              setShowModal(true);
             }}>+ New</button>
           </div>
           <div style={styles.connList}>
@@ -383,12 +453,8 @@ export default function App() {
           {connTabs.length > 0 && (
             <div style={styles.connTabBar}>
               {connTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  style={{ ...styles.connTab, ...(activeConnTabId === tab.id ? styles.connTabActive : {}) }}
-                  onClick={() => setActiveConnTabId(tab.id)}
-                >
-                  <span style={{ color: tab.isConnected ? '#4ade80' : '#ef4444' }}>●</span>
+                <button key={tab.id} style={activeConnTabId === tab.id ? {...styles.connTab, ...styles.connTabActive} : styles.connTab} onClick={() => setActiveConnTabId(tab.id)}>
+                  <span style={{color: tab.isConnected ? '#4ade80' : '#ef4444'}}>●</span>
                   <span>{tab.conn.name}</span>
                   <button style={styles.connTabClose} onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}>×</button>
                 </button>
@@ -400,7 +466,7 @@ export default function App() {
             <>
               <div style={styles.panelHeader}>
                 <span>{activeTabData.conn.name}</span>
-                <button style={{ ...styles.btn, backgroundColor: activeTabData.isConnected ? '#ef4444' : '#3b82f6' }} onClick={activeTabData.isConnected ? handleDisconnect : handleConnect}>
+                <button style={{...styles.btn, backgroundColor: activeTabData.isConnected ? '#ef4444' : '#3b82f6'}} onClick={activeTabData.isConnected ? handleDisconnect : handleConnect}>
                   {activeTabData.isConnected ? 'Disconnect' : 'Connect'}
                 </button>
               </div>
@@ -408,33 +474,52 @@ export default function App() {
               {activeTabData.isConnected && (
                 <div style={styles.cmdButtons}>
                   {commandButtons.map(btn => (
-                    <button key={btn.id} style={{ backgroundColor: '#3d3d3d', border: 'none', borderRadius: 4, color: '#e5e5e5', padding: '4px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => handleButtonClick(btn)}>{btn.name}</button>
+                    <button key={btn.id} style={{backgroundColor: '#3d3d3d', border: 'none', borderRadius: 4, color: '#e5e5e5', padding: '4px 10px', fontSize: 12, cursor: 'pointer'}} onClick={() => handleButtonClick(btn)}>{btn.name}</button>
                   ))}
-                  <button style={{ backgroundColor: '#3b82f6', border: 'none', borderRadius: 4, color: '#fff', padding: '4px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => { setEditingButton(null); setButtonForm({ name: '', commands: '' }); setShowCmdModal(true); }}>+ Add</button>
+                  <button style={{backgroundColor: '#3b82f6', border: 'none', borderRadius: 4, color: '#fff', padding: '4px 10px', fontSize: 12, cursor: 'pointer'}} onClick={() => { setEditingButton(null); setButtonForm({name: '', commands: ''}); setShowCmdModal(true); }}>+ Add</button>
                 </div>
               )}
               
-              {/* Terminal container - render ALL tab containers, show only active */}
-              <div style={styles.terminal}>
+              <div style={styles.terminal} onContextMenu={handleTerminalContextMenu}>
                 {connTabs.map(tab => (
-                  <div 
-                    key={tab.id}
-                    ref={tab.containerRef}
-                    style={{ 
-                      flex: 1, 
-                      overflow: 'hidden',
-                      display: tab.id === activeConnTabId ? 'flex' : 'none',
-                      flexDirection: 'column'
-                    }} 
-                  />
+                  <div key={tab.id} ref={el => { if (el && tab.containerRef) (tab.containerRef as any).current = el; }} style={{flex: 1, overflow: 'hidden', display: tab.id === activeConnTabId ? 'flex' : 'none', flexDirection: 'column'}} />
                 ))}
+                {contextMenu.visible && (
+                  <div style={{
+                    position: 'fixed',
+                    left: contextMenu.x,
+                    top: contextMenu.y,
+                    backgroundColor: '#2d2d2d',
+                    border: '1px solid #404040',
+                    borderRadius: 6,
+                    padding: '4px 0',
+                    zIndex: 1000,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  }}>
+                    <button
+                      onClick={handleCopySelection}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '8px 16px',
+                        background: 'none',
+                        border: 'none',
+                        color: '#e5e5e5',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontSize: 13,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#3d3d3d')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      📋 Copy
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           ) : (
-            <div style={styles.noConn}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>📡</div>
-              <div style={{ color: '#888' }}>Click a connection to open it</div>
-            </div>
+            <div style={styles.noConn}><div style={{fontSize: 48, marginBottom: 16}}>📡</div><div style={{color: '#888'}}>Click a connection to open it</div></div>
           )}
         </div>
       </div>
@@ -452,7 +537,7 @@ export default function App() {
                 <>
                   <div style={styles.formRow}>
                     <div style={styles.formGroup}><label style={styles.label}>Host *</label><input style={styles.input} value={form.host} onChange={e => setForm({...form, host: e.target.value})} placeholder="10.18.224.177" /></div>
-                    <div style={{ ...styles.formGroup, width: 80 }}><label style={styles.label}>Port</label><input style={styles.input} value={form.port} onChange={e => setForm({...form, port: e.target.value})} /></div>
+                    <div style={{...styles.formGroup, width: 80}}><label style={styles.label}>Port</label><input style={styles.input} value={form.port} onChange={e => setForm({...form, port: e.target.value})} /></div>
                   </div>
                   <div style={styles.formGroup}><label style={styles.label}>Username *</label><input style={styles.input} value={form.username} onChange={e => setForm({...form, username: e.target.value})} /></div>
                   <div style={styles.formGroup}><label style={styles.label}>Password</label><input style={styles.input} type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} /></div>
@@ -462,25 +547,23 @@ export default function App() {
                 <>
                   <div style={styles.formGroup}>
                     <label style={styles.label}>Port</label>
-                    <select 
-                      style={styles.input} 
-                      value={form.serialPort} 
-                      onChange={e => setForm({...form, serialPort: e.target.value})}
-                    >
+                    <select style={styles.input} value={form.serialPort} onChange={e => setForm({...form, serialPort: e.target.value})}>
                       <option value="">Select COM port...</option>
-                      {availableComPorts.map(p => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
+                      {availableComPorts.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                   </div>
-                  <div style={styles.formGroup}><label style={styles.label}>Baud Rate</label><select style={styles.input} value={form.baudRate} onChange={e => setForm({...form, baudRate: e.target.value})}><option value="9600">9600</option><option value="115200">115200</option><option value="57600">57600</option><option value="38400">38400</option></select></div>
+                  <div style={styles.formGroup}><label style={styles.label}>Baud Rate</label>
+                    <select style={styles.input} value={form.baudRate} onChange={e => setForm({...form, baudRate: e.target.value})}>
+                      <option value="9600">9600</option><option value="115200">115200</option><option value="57600">57600</option><option value="38400">38400</option><option value="256000">256000</option>
+                    </select>
+                  </div>
                 </>
               )}
               {activeTab === 'websocket' && <div style={styles.formGroup}><label style={styles.label}>URL</label><input style={styles.input} value={form.url} onChange={e => setForm({...form, url: e.target.value})} placeholder="ws://localhost:8080" /></div>}
             </div>
             <div style={styles.modalFooter}>
-              <button style={{ ...styles.btn, backgroundColor: '#666' }} onClick={() => setShowModal(false)}>Cancel</button>
-              <button style={{ ...styles.btn, backgroundColor: '#22c55e' }} onClick={handleSaveConn}>Save</button>
+              <button style={{...styles.btn, backgroundColor: '#666'}} onClick={() => setShowModal(false)}>Cancel</button>
+              <button style={{...styles.btn, backgroundColor: '#22c55e'}} onClick={handleSaveConn}>Save</button>
             </div>
           </div>
         </div>
@@ -489,17 +572,14 @@ export default function App() {
       {showCmdModal && (
         <div style={styles.modalOverlay} onClick={() => setShowCmdModal(false)}>
           <div style={styles.modal} onClick={e => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <span>Quick Command</span>
-              <button style={styles.modalClose} onClick={() => setShowCmdModal(false)}>×</button>
-            </div>
+            <div style={styles.modalHeader}><span>Quick Command</span><button style={styles.modalClose} onClick={() => setShowCmdModal(false)}>×</button></div>
             <div style={styles.modalBody}>
               <div style={styles.formGroup}><label style={styles.label}>Button Name</label><input style={styles.input} value={buttonForm.name} onChange={e => setButtonForm({...buttonForm, name: e.target.value})} placeholder="ls" /></div>
-              <div style={styles.formGroup}><label style={styles.label}>Commands (one per line)</label><textarea style={{ ...styles.input, height: 120, resize: 'vertical' }} value={buttonForm.commands} onChange={e => setButtonForm({...buttonForm, commands: e.target.value})} placeholder={"cd /data\nls -la"} /></div>
+              <div style={styles.formGroup}><label style={styles.label}>Commands (one per line)</label><textarea style={{...styles.input, height: 120, resize: 'vertical'}} value={buttonForm.commands} onChange={e => setButtonForm({...buttonForm, commands: e.target.value})} placeholder={"cd /data\nls -la"} /></div>
             </div>
             <div style={styles.modalFooter}>
-              <button style={{ ...styles.btn, backgroundColor: '#666' }} onClick={() => setShowCmdModal(false)}>Cancel</button>
-              <button style={{ ...styles.btn, backgroundColor: '#22c55e' }} onClick={handleSaveCommand}>{editingButton ? 'Update' : 'Save'}</button>
+              <button style={{...styles.btn, backgroundColor: '#666'}} onClick={() => setShowCmdModal(false)}>Cancel</button>
+              <button style={{...styles.btn, backgroundColor: '#22c55e'}} onClick={handleSaveCommand}>{editingButton ? 'Update' : 'Save'}</button>
             </div>
           </div>
         </div>
@@ -507,8 +587,8 @@ export default function App() {
 
       <div style={styles.status}>
         <span>UTF-8</span><span>•</span><span>{activeTab.toUpperCase()}</span><span>•</span>
-        <span style={{ color: activeTabData?.isConnected ? '#4ade80' : '#ef4444' }}>● {activeTabData?.isConnected ? 'Connected' : 'Disconnected'}</span>
-        <span>•</span><span>{connTabs.length} tabs open</span>
+        <span style={{color: activeTabData?.isConnected ? '#4ade80' : '#ef4444'}}>● {activeTabData?.isConnected ? 'Connected' : 'Disconnected'}</span>
+        <span>•</span><span>{connTabs.length} tabs</span>
       </div>
     </div>
   );

@@ -4,6 +4,15 @@ const { fork } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 
+// Use node-pty for proper PTY support (required for interactive PowerShell)
+let nodePty;
+try {
+  nodePty = require('node-pty');
+  log('node-pty loaded successfully');
+} catch (e) {
+  log('node-pty load failed:', e.message);
+}
+
 let mainWindow;
 let psProcess;
 
@@ -93,28 +102,182 @@ function saveConnections(conns) {
   } catch (e) { log('Save conns error:', e); }
 }
 
-// PowerShell
-ipcMain.handle('ps:connect', async () => {
-  log('PS connect requested');
-  return new Promise((resolve, reject) => {
-    psProcess = fork(path.join(__dirname, '../dist/cli/index.js'), ['connect', '-t', 'powershell'], { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
-    psProcess.stdout?.on('data', (data) => { if (mainWindow) mainWindow.webContents.send('ps:data', data.toString()); });
-    psProcess.stderr?.on('data', (data) => { if (mainWindow) mainWindow.webContents.send('ps:error', data.toString()); });
-    psProcess.on('error', (e) => { log('PS error:', e.message); reject(e); });
-    psProcess.on('close', (code) => { log('PS closed:', code); });
-    setTimeout(() => { log('PS connected'); resolve('connected'); }, 1000);
-  });
+// PowerShell - using node-pty for proper PTY support
+const psConnections = new Map(); // connId -> { pty, connId }
+
+// Windows Terminal API support - using node-pty with ConPTY
+ipcMain.handle('ps:connect', async (event, { connId }) => {
+  log('PS connect requested:', connId);
+  
+  if (!nodePty) {
+    log('PS error: node-pty not loaded');
+    return 'node-pty not available';
+  }
+  
+  // Check if already connected with this connId
+  if (psConnections.has(connId)) {
+    log('PS: already connected');
+    return 'already connected';
+  }
+  
+  try {
+    log('PS: spawning PowerShell with ConPTY (Windows Terminal backend)');
+    
+    // Use ConPTY - this is what Windows Terminal uses internally
+    // ConPTY provides proper PTY emulation for Windows console apps
+    const pty = nodePty.spawn('powershell.exe', [
+      '-NoLogo', 
+      '-NoExit', 
+      '-ExecutionPolicy', 'Bypass'
+    ], {
+      name: 'xterm-256color',
+      cols: 120,
+      rows: 30,
+      cwd: os.homedir(),
+      env: process.env,
+      conpty: true, // Use ConPTY - this is the Windows Terminal backend
+    });
+    
+    // Note: We don't set localEcho to false here because node-pty doesn't support it
+    // Instead, we filter the echo in the renderer
+    
+    psConnections.set(connId, { pty, connId });
+    
+    // Handle PTY output - send to renderer
+    pty.onData((data) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('ps:data:' + connId, data);
+      }
+    });
+    
+    pty.onExit(({ exitCode, signal }) => {
+      log('PS pty exit:', exitCode, signal);
+      psConnections.delete(connId);
+      if (mainWindow) {
+        mainWindow.webContents.send('ps:data:' + connId, '\r\n[PowerShell exited]\r\n');
+      }
+    });
+    
+    log('PS pty spawned, pid:', pty.pid);
+    return 'connected';
+    
+  } catch (e) {
+    log('PS pty spawn error:', e.message);
+    return 'error: ' + e.message;
+  }
 });
 
-ipcMain.handle('ps:execute', async (event, cmd) => {
-  log('PS execute:', cmd);
-  if (psProcess && psProcess.stdin) { psProcess.stdin.write(cmd + '\n'); return 'executed'; }
+ipcMain.handle('ps:execute', async (event, { connId, cmd }) => {
+  log('PS execute for', connId, ':', JSON.stringify(cmd));
+  const conn = psConnections.get(connId);
+  if (conn && conn.pty) {
+    try {
+      // Write directly to PTY
+      conn.pty.write(cmd);
+      log('PS execute: written ok');
+      return 'executed';
+    } catch (e) {
+      log('PS execute error:', e.message);
+      return 'error: ' + e.message;
+    }
+  } else {
+    log('PS execute: not connected');
+  }
   return 'not connected';
 });
 
-ipcMain.handle('ps:disconnect', async () => {
-  log('PS disconnect');
-  if (psProcess) { psProcess.kill(); psProcess = null; }
+ipcMain.handle('ps:disconnect', async (event, connId) => {
+  log('PS disconnect:', connId);
+  const conn = psConnections.get(connId);
+  if (conn && conn.pty) {
+    try {
+      conn.pty.kill();
+    } catch (e) {}
+    psConnections.delete(connId);
+  }
+  return 'disconnected';
+});
+
+// CMD.exe support
+const cmdConnections = new Map(); // connId -> { pty, connId }
+
+ipcMain.handle('cmd:connect', async (event, { connId }) => {
+  log('CMD connect requested:', connId);
+  
+  if (!nodePty) {
+    log('CMD error: node-pty not loaded');
+    return 'node-pty not available';
+  }
+  
+  if (cmdConnections.has(connId)) {
+    log('CMD: already connected');
+    return 'already connected';
+  }
+  
+  try {
+    log('CMD: spawning cmd.exe with ConPTY');
+    
+    const pty = nodePty.spawn('cmd.exe', [], {
+      name: 'xterm-256color',
+      cols: 120,
+      rows: 30,
+      cwd: os.homedir(),
+      env: process.env,
+      conpty: true,
+    });
+    
+    cmdConnections.set(connId, { pty, connId });
+    
+    pty.onData((data) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('cmd:data:' + connId, data);
+      }
+    });
+    
+    pty.onExit(({ exitCode, signal }) => {
+      log('CMD pty exit:', exitCode, signal);
+      cmdConnections.delete(connId);
+      if (mainWindow) {
+        mainWindow.webContents.send('cmd:data:' + connId, '\r\n[Command Prompt exited]\r\n');
+      }
+    });
+    
+    log('CMD pty spawned, pid:', pty.pid);
+    return 'connected';
+    
+  } catch (e) {
+    log('CMD pty spawn error:', e.message);
+    return 'error: ' + e.message;
+  }
+});
+
+ipcMain.handle('cmd:execute', async (event, { connId, cmd }) => {
+  log('CMD execute for', connId, ':', JSON.stringify(cmd));
+  const conn = cmdConnections.get(connId);
+  if (conn && conn.pty) {
+    try {
+      conn.pty.write(cmd);
+      log('CMD execute: written ok');
+      return 'executed';
+    } catch (e) {
+      log('CMD execute error:', e.message);
+      return 'error: ' + e.message;
+    }
+  } else {
+    log('CMD execute: not connected');
+  }
+  return 'not connected';
+});
+
+ipcMain.handle('cmd:disconnect', async (event, connId) => {
+  log('CMD disconnect:', connId);
+  const conn = cmdConnections.get(connId);
+  if (conn && conn.pty) {
+    try {
+      conn.pty.kill();
+    } catch (e) {}
+    cmdConnections.delete(connId);
+  }
   return 'disconnected';
 });
 

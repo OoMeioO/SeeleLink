@@ -1,11 +1,29 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  psConnect: () => ipcRenderer.invoke('ps:connect'),
-  psExecute: (cmd) => ipcRenderer.invoke('ps:execute', cmd),
-  psDisconnect: () => ipcRenderer.invoke('ps:disconnect'),
-  onPsData: (callback) => ipcRenderer.on('ps:data', (_, data) => callback(data)),
-  onPsError: (callback) => ipcRenderer.on('ps:error', (_, data) => callback(data)),
+  psConnect: (connId) => ipcRenderer.invoke('ps:connect', { connId }),
+  psExecute: (connId, cmd) => ipcRenderer.invoke('ps:execute', { connId, cmd }),
+  psDisconnect: (connId) => ipcRenderer.invoke('ps:disconnect', connId),
+  onPsData: (connId, callback) => {
+    const channel = 'ps:data:' + connId;
+    ipcRenderer.removeAllListeners(channel);
+    ipcRenderer.on(channel, (_, data) => callback(data));
+  },
+  onPsError: (connId, callback) => {
+    const channel = 'ps:error:' + connId;
+    ipcRenderer.removeAllListeners(channel);
+    ipcRenderer.on(channel, (_, data) => callback(data));
+  },
+  
+  // CMD support
+  cmdConnect: (connId) => ipcRenderer.invoke('cmd:connect', { connId }),
+  cmdExecute: (connId, cmd) => ipcRenderer.invoke('cmd:execute', { connId, cmd }),
+  cmdDisconnect: (connId) => ipcRenderer.invoke('cmd:disconnect', connId),
+  onCmdData: (connId, callback) => {
+    const channel = 'cmd:data:' + connId;
+    ipcRenderer.removeAllListeners(channel);
+    ipcRenderer.on(channel, (_, data) => callback(data));
+  },
   
   // SSH
   sshConnect: (config) => ipcRenderer.invoke('ssh:connect', config),
