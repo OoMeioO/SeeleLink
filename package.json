@@ -9,7 +9,8 @@
     "dev": "vite",
     "build": "vite build && tsc --outDir dist",
     "electron:dev": "npm run build && electron .",
-    "package": "npm run build && electron-builder --win --config.asar=false",
+    "package": "npm run build && electron-builder --win",
+    "package:dir": "npm run build && electron-builder --win --dir",
     "start": "node dist/cli/index.js"
   },
   "build": {
@@ -26,12 +27,9 @@
       "SEELINK_CONTROL.md"
     ],
     "win": {
-      "target": "portable",
-      "signAndEditExecutable": false
+      "target": "portable"
     },
-    "electronDist": "F:\\worksapce\\github\\SeeleLink\\node_modules\\electron\\dist",
-    "electronVersion": "30.5.1",
-    "asar": false,
+    "asar": true,
     "npmRebuild": false
   },
   "dependencies": {

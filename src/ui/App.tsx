@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import '@xterm/xterm/css/xterm.css';
 
-type TabType = 'ssh' | 'serial' | 'powershell' | 'cmd' | 'websocket';
+type TabType = 'ssh' | 'serial' | 'powershell' | 'cmd' | 'websocket' | 'settings';
 
 interface SavedConn {
   id: string; name: string; type: TabType;
@@ -118,18 +118,16 @@ export default function App() {
   const [wsInput, setWsInput] = useState('');
   const wsLogRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll WebSocket log to bottom
-  useEffect(() => {
-    if (wsLogRef.current) {
-      wsLogRef.current.scrollTop = wsLogRef.current.scrollHeight;
-    }
-  }, [wsMessages[activeTabData?.id]]);
+  // Settings state
+  const [controlApiConfig, setControlApiConfig] = useState({ enabled: true, host: '127.0.0.1', port: 9380 });
+  const [mcpApiConfig, setMcpApiConfig] = useState({ enabled: false, host: '127.0.0.1', port: 9381 });
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   // Use refs to avoid stale closure issues
   const connectedRefs = useRef<Map<string, boolean>>(new Map());
   const connTabsRef = useRef(connTabs);
   const initRef = useRef<Set<string>>(new Set());
-  
+
   // Keep connTabsRef in sync
   useEffect(() => {
     connTabsRef.current = connTabs;
@@ -137,7 +135,22 @@ export default function App() {
 
   const activeTabData = connTabs.find(t => t.id === activeConnTabId);
 
+  // Auto-scroll WebSocket log to bottom
+  useEffect(() => {
+    if (wsLogRef.current) {
+      wsLogRef.current.scrollTop = wsLogRef.current.scrollHeight;
+    }
+  }, [wsMessages[activeTabData?.id]]);
+
   useEffect(() => { loadConnections(); }, []);
+
+  // Load settings when Settings tab is active
+  useEffect(() => {
+    if (activeTab === 'settings' && window.electronAPI) {
+      window.electronAPI.controlApiGetConfig().then(cfg => { if (cfg) setControlApiConfig(cfg); });
+      window.electronAPI.mcpApiGetConfig().then(cfg => { if (cfg) setMcpApiConfig(cfg); });
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTabData?.conn && window.electronAPI) {
@@ -445,12 +458,13 @@ export default function App() {
       <div style={styles.header}><span style={styles.logo}>⚡</span><span>SeeleLink</span></div>
       
       <div style={styles.tabBar}>
-        {(['ssh', 'serial', 'powershell', 'cmd', 'websocket'] as TabType[]).map(t => (
-          <button key={t} style={activeTab === t ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => { setActiveTab(t); setActiveConnTabId(null); }}>{t === 'ssh' && '🖥️'} {t === 'serial' && '📡'} {t === 'powershell' && '💻'} {t === 'cmd' && '📝'} {t === 'websocket' && '🌐'} <span style={{marginLeft: 6}}>{t.toUpperCase()}</span></button>
+        {(['ssh', 'serial', 'powershell', 'cmd', 'websocket', 'settings'] as TabType[]).map(t => (
+          <button key={t} style={activeTab === t ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => { setActiveTab(t); setActiveConnTabId(null); }}>{t === 'ssh' && '🖥️'} {t === 'serial' && '📡'} {t === 'powershell' && '💻'} {t === 'cmd' && '📝'} {t === 'websocket' && '🌐'} {t === 'settings' && '⚙️'} <span style={{marginLeft: 6}}>{t === 'settings' ? 'SETTINGS' : t.toUpperCase()}</span></button>
         ))}
       </div>
 
       <div style={styles.main}>
+        {activeTab !== 'settings' && (
         <div style={styles.sidebar}>
           <div style={styles.sidebarHeader}>
             <span style={{fontWeight: 600, fontSize: 13}}>Connections</span>
@@ -476,6 +490,7 @@ export default function App() {
             ))}
           </div>
         </div>
+        )}
 
         <div style={styles.content}>
           {connTabs.length > 0 && (
@@ -593,6 +608,101 @@ export default function App() {
                 </div>
               )}
             </>
+          ) : activeTab === 'settings' ? (
+            /* ---- Settings Panel ---- */
+            <div style={{flex: 1, overflow: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 24}}>
+              <div style={{fontSize: 20, fontWeight: 600, marginBottom: 8}}>⚙️ Settings</div>
+
+              {/* Control API Section */}
+              <div style={{backgroundColor: '#252525', borderRadius: 12, padding: 20, border: '1px solid #404040'}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16}}>
+                  <span style={{fontSize: 16, fontWeight: 600}}>🔌 Control API (TCP JSON)</span>
+                  <label style={{display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', cursor: 'pointer'}}>
+                    <input type="checkbox" checked={controlApiConfig.enabled} onChange={e => setControlApiConfig(c => ({...c, enabled: e.target.checked}))} />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+                <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
+                  <div style={{flex: 1}}>
+                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Host</label>
+                    <input style={{...styles.input, width: '100%'}} value={controlApiConfig.host} onChange={e => setControlApiConfig(c => ({...c, host: e.target.value}))} />
+                  </div>
+                  <div style={{width: 120}}>
+                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Port</label>
+                    <input style={{...styles.input, width: '100%'}} type="number" value={controlApiConfig.port} onChange={e => setControlApiConfig(c => ({...c, port: parseInt(e.target.value) || 9380}))} />
+                  </div>
+                </div>
+                <div style={{fontSize: 12, color: '#666', marginBottom: 12}}>
+                  Endpoint: <code style={{backgroundColor: '#1e1e1e', padding: '2px 6px', borderRadius: 4}}>{controlApiConfig.host}:{controlApiConfig.port}</code>
+                </div>
+                <button
+                  style={{...styles.btn, backgroundColor: '#3b82f6', marginTop: 8}}
+                  onClick={async () => {
+                    if (window.electronAPI) {
+                      await window.electronAPI.controlApiSetConfig(controlApiConfig);
+                      setSettingsSaved(true);
+                      setTimeout(() => setSettingsSaved(false), 2000);
+                    }
+                  }}
+                >Save Control API</button>
+                {settingsSaved && <span style={{marginLeft: 12, color: '#4ade80'}}>✓ Saved</span>}
+              </div>
+
+              {/* MCP API Section */}
+              <div style={{backgroundColor: '#252525', borderRadius: 12, padding: 20, border: '1px solid #404040'}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16}}>
+                  <span style={{fontSize: 16, fontWeight: 600}}>🤖 MCP Server (HTTP+SSE)</span>
+                  <label style={{display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', cursor: 'pointer'}}>
+                    <input type="checkbox" checked={mcpApiConfig.enabled} onChange={e => setMcpApiConfig(c => ({...c, enabled: e.target.checked}))} />
+                    <span>Enabled</span>
+                  </label>
+                </div>
+                <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
+                  <div style={{flex: 1}}>
+                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Host</label>
+                    <input style={{...styles.input, width: '100%'}} value={mcpApiConfig.host} onChange={e => setMcpApiConfig(c => ({...c, host: e.target.value}))} />
+                  </div>
+                  <div style={{width: 120}}>
+                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Port</label>
+                    <input style={{...styles.input, width: '100%'}} type="number" value={mcpApiConfig.port} onChange={e => setMcpApiConfig(c => ({...c, port: parseInt(e.target.value) || 9381}))} />
+                  </div>
+                </div>
+                <div style={{fontSize: 12, color: '#666', marginBottom: 12}}>
+                  Endpoint: <code style={{backgroundColor: '#1e1e1e', padding: '2px 6px', borderRadius: 4}}>{mcpApiConfig.host}:{mcpApiConfig.port}</code>
+                </div>
+                <button
+                  style={{...styles.btn, backgroundColor: '#3b82f6', marginTop: 8}}
+                  onClick={async () => {
+                    if (window.electronAPI) {
+                      await window.electronAPI.mcpApiSetConfig(mcpApiConfig);
+                      setSettingsSaved(true);
+                      setTimeout(() => setSettingsSaved(false), 2000);
+                    }
+                  }}
+                >Save MCP</button>
+                {settingsSaved && <span style={{marginLeft: 12, color: '#4ade80'}}>✓ Saved</span>}
+              </div>
+
+              {/* OpenClaw Integration */}
+              <div style={{backgroundColor: '#252525', borderRadius: 12, padding: 20, border: '1px solid #404040'}}>
+                <div style={{fontSize: 16, fontWeight: 600, marginBottom: 12}}>🔗 OpenClaw Integration</div>
+                <button
+                  style={{...styles.btn, backgroundColor: '#22c55e'}}
+                  onClick={() => {
+                    const config = {
+                      controlApi: { enabled: controlApiConfig.enabled, host: controlApiConfig.host, port: controlApiConfig.port },
+                      mcpApi: { enabled: mcpApiConfig.enabled, host: mcpApiConfig.host, port: mcpApiConfig.port }
+                    };
+                    navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+                    setSettingsSaved(true);
+                    setTimeout(() => setSettingsSaved(false), 2000);
+                  }}
+                >📋 Copy OpenClaw Config</button>
+                <div style={{fontSize: 12, color: '#666', marginTop: 8}}>
+                  Copy this JSON config and paste it into your OpenClaw configuration to enable SeeleLink integration.
+                </div>
+              </div>
+            </div>
           ) : (
             <div style={styles.noConn}><div style={{fontSize: 48, marginBottom: 16}}>📡</div><div style={{color: '#888'}}>Click a connection to open it</div></div>
           )}
