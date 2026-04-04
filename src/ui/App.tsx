@@ -41,6 +41,10 @@ declare global {
       serialExecute: (connId: string, data: string) => Promise<void>;
       onSerialData: (connId: string, callback: (data: string) => void) => void;
       serialList: () => Promise<string[]>;
+      wsConnect: (connId: string, url: string) => Promise<void>;
+      wsDisconnect: (connId: string) => Promise<void>;
+      wsSend: (connId: string, data: string) => Promise<void>;
+      onWsData: (connId: string, callback: (data: string) => void) => void;
       consoleLog: (...args: any[]) => void;
       saveConnection: (conn: SavedConn) => Promise<void>; loadConnections: () => Promise<SavedConn[]>;
       deleteConnection: (id: string) => Promise<void>;
@@ -108,6 +112,18 @@ export default function App() {
   
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+
+  // WebSocket state
+  const [wsMessages, setWsMessages] = useState<Record<string, string[]>>({});
+  const [wsInput, setWsInput] = useState('');
+  const wsLogRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll WebSocket log to bottom
+  useEffect(() => {
+    if (wsLogRef.current) {
+      wsLogRef.current.scrollTop = wsLogRef.current.scrollHeight;
+    }
+  }, [wsMessages[activeTabData?.id]]);
 
   // Use refs to avoid stale closure issues
   const connectedRefs = useRef<Map<string, boolean>>(new Map());
@@ -279,11 +295,17 @@ export default function App() {
       try { tab.term.dispose(); } catch (e) {}
     }
     initRef.current.delete(tabId);
-    
+
+    // Clear WebSocket messages for this tab
+    if (tab.conn.type === 'websocket') {
+      setWsMessages(prev => { const n = {...prev}; delete n[tabId]; return n; });
+    }
+
     if (tab.isConnected && window.electronAPI) {
       if (tab.conn.type === 'ssh') await window.electronAPI.sshDisconnect(tab.connId);
       else if (tab.conn.type === 'powershell') await window.electronAPI.psDisconnect(tab.connId);
       else if (tab.conn.type === 'serial') await window.electronAPI.serialDisconnect(tab.connId);
+      else if (tab.conn.type === 'websocket') await window.electronAPI.wsDisconnect(tab.connId);
     }
     
     connectedRefs.current.delete(tabId);
@@ -348,6 +370,11 @@ export default function App() {
           if (tab.term) tab.term.write('\r\n[Error] ' + tab.conn.serialPort + ' is already in use\r\n');
           return;
         }
+      } else if (tab.conn.type === 'websocket') {
+        window.electronAPI?.onWsData(tab.connId, (data: string) => {
+          setWsMessages(prev => ({ ...prev, [tab.id]: [...(prev[tab.id] || []), data] }));
+        });
+        await window.electronAPI?.wsConnect(tab.connId, tab.conn.url || 'ws://localhost:8080');
       }
       connectedRefs.current.set(tab.id, true);
       setConnTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isConnected: true } : t));
@@ -364,7 +391,8 @@ export default function App() {
     else if (tab.conn.type === 'powershell') await window.electronAPI.psDisconnect(tab.connId);
     else if (tab.conn.type === 'cmd') await window.electronAPI.cmdDisconnect(tab.connId);
     else if (tab.conn.type === 'serial') await window.electronAPI.serialDisconnect(tab.connId);
-    
+    else if (tab.conn.type === 'websocket') await window.electronAPI.wsDisconnect(tab.connId);
+
     connectedRefs.current.set(tab.id, false);
     if (tab.term) tab.term.write('\r\n[Disconnected]\r\n');
     setConnTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isConnected: false } : t));
@@ -471,7 +499,7 @@ export default function App() {
                 </button>
               </div>
               
-              {activeTabData.isConnected && (
+              {activeTabData.isConnected && activeTabData.conn.type !== 'websocket' && (
                 <div style={styles.cmdButtons}>
                   {commandButtons.map(btn => (
                     <button key={btn.id} style={{backgroundColor: '#3d3d3d', border: 'none', borderRadius: 4, color: '#e5e5e5', padding: '4px 10px', fontSize: 12, cursor: 'pointer'}} onClick={() => handleButtonClick(btn)}>{btn.name}</button>
@@ -479,44 +507,91 @@ export default function App() {
                   <button style={{backgroundColor: '#3b82f6', border: 'none', borderRadius: 4, color: '#fff', padding: '4px 10px', fontSize: 12, cursor: 'pointer'}} onClick={() => { setEditingButton(null); setButtonForm({name: '', commands: ''}); setShowCmdModal(true); }}>+ Add</button>
                 </div>
               )}
-              
-              <div style={styles.terminal} onContextMenu={handleTerminalContextMenu}>
-                {connTabs.map(tab => (
-                  <div key={tab.id} ref={el => { if (el && tab.containerRef) (tab.containerRef as any).current = el; }} style={{flex: 1, overflow: 'hidden', display: tab.id === activeConnTabId ? 'flex' : 'none', flexDirection: 'column'}} />
-                ))}
-                {contextMenu.visible && (
-                  <div style={{
-                    position: 'fixed',
-                    left: contextMenu.x,
-                    top: contextMenu.y,
-                    backgroundColor: '#2d2d2d',
-                    border: '1px solid #404040',
-                    borderRadius: 6,
-                    padding: '4px 0',
-                    zIndex: 1000,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  }}>
-                    <button
-                      onClick={handleCopySelection}
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        padding: '8px 16px',
-                        background: 'none',
-                        border: 'none',
-                        color: '#e5e5e5',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        fontSize: 13,
+
+              {activeTabData.conn.type === 'websocket' ? (
+                /* ---- WebSocket Panel ---- */
+                <div style={{display:'flex',flexDirection:'column',height:'100%',backgroundColor:'#0d0d0d'}}>
+                  {/* Send Area */}
+                  <div style={{display:'flex',gap:8,padding:'8px 12px',backgroundColor:'#1e1e1e',borderBottom:'1px solid #333'}}>
+                    <textarea
+                      style={{flex:1,minHeight:60,maxHeight:120,backgroundColor:'#0d0d0d',border:'1px solid #404040',borderRadius:6,color:'#e5e5e5',fontFamily:'Consolas,monospace',fontSize:13,padding:'8px 10px',resize:'vertical',outline:'none'}}
+                      value={wsInput}
+                      onChange={e => setWsInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (wsInput.trim() && activeTabData?.isConnected) {
+                            window.electronAPI?.wsSend(activeTabData.connId, wsInput + '\n');
+                            setWsMessages(prev => ({...prev, [activeTabData.id]: [...(prev[activeTabData.id]||[]), '> ' + wsInput + '\n']}));
+                            setWsInput('');
+                          }
+                        }
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#3d3d3d')}
-                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                    >
-                      📋 Copy
-                    </button>
+                      placeholder={activeTabData?.isConnected ? 'Type message, Enter to send...' : 'Connect to send...'}
+                      disabled={!activeTabData?.isConnected}
+                    />
+                    <button
+                      style={{backgroundColor:'#3b82f6',border:'none',borderRadius:6,color:'#fff',padding:'8px 16px',cursor:'pointer',fontSize:13,alignSelf:'flex-end'}}
+                      onClick={() => {
+                        if (wsInput.trim() && activeTabData?.isConnected) {
+                          window.electronAPI?.wsSend(activeTabData.connId, wsInput + '\n');
+                          setWsMessages(prev => ({...prev, [activeTabData.id]: [...(prev[activeTabData.id]||[]), '> ' + wsInput + '\n']}));
+                          setWsInput('');
+                        }
+                      }}
+                      disabled={!activeTabData?.isConnected || !wsInput.trim()}
+                    >Send</button>
                   </div>
-                )}
-              </div>
+                  {/* Receive Area */}
+                  <div ref={wsLogRef} style={{flex:1,overflow:'auto',backgroundColor:'#0d0d0d',padding:'8px 12px',fontFamily:'Consolas,monospace',fontSize:13,color:'#ccc',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+                    {(wsMessages[activeTabData.id]||[]).map((msg,i) => (
+                      <div key={i} style={{color: msg.startsWith('>') ? '#4ade80' : msg.includes('[Error') ? '#ef4444' : msg.includes('[Connect') || msg.includes('[Disconn') ? '#60a5fa' : '#aaa'}}>{msg}</div>
+                    ))}
+                    {(!wsMessages[activeTabData.id] || wsMessages[activeTabData.id].length === 0) && (
+                      <div style={{color:'#555'}}>No messages yet. Connect to start.</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* ---- Terminal for non-WebSocket types ---- */
+                <div style={styles.terminal} onContextMenu={handleTerminalContextMenu}>
+                  {connTabs.filter(t => t.conn.type !== 'websocket').map(tab => (
+                    <div key={tab.id} ref={el => { if (el && tab.containerRef) (tab.containerRef as any).current = el; }} style={{flex: 1, overflow: 'hidden', display: tab.id === activeConnTabId ? 'flex' : 'none', flexDirection: 'column'}} />
+                  ))}
+                  {contextMenu.visible && (
+                    <div style={{
+                      position: 'fixed',
+                      left: contextMenu.x,
+                      top: contextMenu.y,
+                      backgroundColor: '#2d2d2d',
+                      border: '1px solid #404040',
+                      borderRadius: 6,
+                      padding: '4px 0',
+                      zIndex: 1000,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    }}>
+                      <button
+                        onClick={handleCopySelection}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          padding: '8px 16px',
+                          background: 'none',
+                          border: 'none',
+                          color: '#e5e5e5',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          fontSize: 13,
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#3d3d3d')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <div style={styles.noConn}><div style={{fontSize: 48, marginBottom: 16}}>📡</div><div style={{color: '#888'}}>Click a connection to open it</div></div>

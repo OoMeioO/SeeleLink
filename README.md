@@ -8,6 +8,9 @@ Unified Connector Tool - SSH, Serial, PowerShell, WebSocket
 - 📡 **多协议支持** - SSH、Serial、PowerShell、WebSocket
 - 🔄 **多标签支持** - 同时管理多个连接
 - 💾 **配置持久化** - 保存连接配置和常用命令
+- 🔌 **外部控制 API** - TCP port 9380，支持外部程序（如 OpenClaw）完全控制
+
+> 📖 **OpenClaw 集成说明**：详见 [SEELINK_CONTROL.md](SEELINK_CONTROL.md)
 
 ## 代码架构
 

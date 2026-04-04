@@ -45,6 +45,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(channel, (_, data) => callback(data));
   },
   serialList: () => ipcRenderer.invoke('serial:list'),
+
+  // WebSocket
+  wsConnect: (connId, url) => ipcRenderer.invoke('ws:connect', { connId, url }),
+  wsDisconnect: (connId) => ipcRenderer.invoke('ws:disconnect', connId),
+  wsSend: (connId, data) => ipcRenderer.invoke('ws:send', { connId, data }),
+  onWsData: (connId, callback) => {
+    const channel = 'ws:data:' + connId;
+    ipcRenderer.removeAllListeners(channel);
+    ipcRenderer.on(channel, (_, data) => callback(data));
+  },
   
   // Console log forwarding
   consoleLog: (...args) => ipcRenderer.send('log', '[Console]', ...args),
@@ -54,4 +64,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteConnection: (id) => ipcRenderer.invoke('deleteConnection', id),
   saveCommands: (connId, commands) => ipcRenderer.invoke('saveCommands', connId, commands),
   loadCommands: (connId) => ipcRenderer.invoke('loadCommands', connId),
+
+  // Control API (Settings)
+  controlApiGetConfig: () => ipcRenderer.invoke('controlApi:getConfig'),
+  controlApiSetConfig: (cfg) => ipcRenderer.invoke('controlApi:setConfig', cfg),
+  controlApiFindAvailablePort: (host) => ipcRenderer.invoke('controlApi:findAvailablePort', { host }),
+
+  // MCP API (Settings)
+  mcpApiGetConfig: () => ipcRenderer.invoke('mcpApi:getConfig'),
+  mcpApiSetConfig: (cfg) => ipcRenderer.invoke('mcpApi:setConfig', cfg),
+  mcpApiFindAvailablePort: (host) => ipcRenderer.invoke('mcpApi:findAvailablePort', { host }),
+
+  appGetInfo: () => ipcRenderer.invoke('app:getInfo'),
 });
