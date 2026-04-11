@@ -94,8 +94,8 @@ OpenClaw 配置（`~/.openclaw/config.json`）：
 | 平台 | 状态 |
 |------|------|
 | Windows | ✅ 完整 |
-| macOS | ⚠️ node-pty 需源码编译 |
-| Linux | ⚠️ ADB / node-pty 需配置 |
+| macOS | ✅ 编译通过 / ⚠️ 功能待验证 |
+| Linux | ✅ 编译通过 / ⚠️ 功能待验证 |
 
 ---
 

@@ -94,8 +94,8 @@ OpenClaw config (`~/.openclaw/config.json`):
 | Platform | Status |
 |----------|--------|
 | Windows | ✅ Full |
-| macOS | ⚠️ node-pty needs source build |
-| Linux | ⚠️ ADB / node-pty needs setup |
+| macOS | ✅ Build OK / ⚠️ Functionality unverified |
+| Linux | ✅ Build OK / ⚠️ Functionality unverified |
 
 ---
 
