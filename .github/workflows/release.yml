@@ -1,11 +1,38 @@
-name: Release Build
+name: Release Build & Test
 
 on:
   push:
     branches: [main, develop]
   workflow_dispatch:
 
+env:
+  NODE_OPTIONS: '--max-old-space-size=4096'
+
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Unit Tests (parallel with builds)
+  # ─────────────────────────────────────────────────────────────
+  test-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm run test:unit
+
   # ─────────────────────────────────────────────────────────────
   # Linux Build
   # ─────────────────────────────────────────────────────────────
@@ -40,10 +67,10 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────
-  # macOS Build
+  # macOS Build — use macos-13 (Intel) for better native module compat
   # ─────────────────────────────────────────────────────────────
   build-macos:
-    runs-on: macos-14
+    runs-on: macos-13
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,3 +129,76 @@ jobs:
           name: SeeleLink-windows
           path: release/win-unpacked/
           retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────
+  # Integration Tests (run against Linux build)
+  # ─────────────────────────────────────────────────────────────
+  test-integration:
+    needs: build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install xvfb (virtual display)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: SeeleLink-linux
+          path: ./linux-unpacked
+
+      - name: Build Vite (for test helpers)
+        run: npm run build
+
+      - name: Make executable
+        run: chmod +x ./linux-unpacked/seelelink
+
+      - name: Start Electron app (headless via xvfb)
+        run: |
+          xvfb-run --auto-servernum ./linux-unpacked/seelelink &
+          echo $! > /tmp/electron.pid
+          echo "Electron PID: $(cat /tmp/electron.pid)"
+          sleep 15
+
+      - name: Wait for services
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:9380 > /dev/null 2>&1 && curl -sf http://127.0.0.1:9381/health > /dev/null 2>&1; then
+              echo "Services ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Services failed to start"
+          curl -v http://127.0.0.1:9380 || true
+          exit 1
+
+      - name: Run integration tests
+        run: node tests/integration/feature-coverage.test.cjs
+        timeout-minutes: 10
+
+      - name: Stop Electron app
+        if: always()
+        run: |
+          if [ -f /tmp/electron.pid ]; then
+            kill $(cat /tmp/electron.pid) 2>/dev/null || true
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
