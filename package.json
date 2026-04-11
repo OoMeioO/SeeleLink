@@ -9,8 +9,8 @@
     "dev": "vite",
     "build": "vite build && node scripts/copy-assets.js",
     "electron:dev": "npm run build && node electron/start.cjs",
-    "package": "npm run build && electron-builder --win",
-    "package:dir": "npm run build && electron-builder --win --dir",
+    "package": "npm run build && electron-builder",
+    "package:dir": "npm run build && electron-builder --dir",
     "start": "node dist/cli/index.js",
     "postinstall": "node scripts/patch-node-pty.cjs",
     "test": "node tests/run-all.cjs",
@@ -26,7 +26,7 @@
     "appId": "com.seelelink.app",
     "productName": "SeeleLink",
     "directories": {
-      "output": "E:\\SeeleLink\\release"
+      "output": "release"
     },
     "files": [
       "dist/**/*",
@@ -38,8 +38,16 @@
     "win": {
       "target": "portable"
     },
+    "linux": {
+      "target": ["AppImage", "dir"],
+      "category": "Network"
+    },
+    "mac": {
+      "target": ["dmg", "dir"],
+      "category": "public.app-category.network"
+    },
     "asar": true,
-    "npmRebuild": false
+    "npmRebuild": true
   },
   "dependencies": {
     "3": "^2.1.0",

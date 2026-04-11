@@ -1,0 +1,104 @@
+name: Release Build
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Linux Build
+  # ─────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Package Linux
+        run: npm run package -- --linux --dir
+        env:
+          npm_config_build_from_source: true
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SeeleLink-linux
+          path: release/linux-unpacked/
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────
+  # macOS Build
+  # ─────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Package macOS
+        run: npm run package -- --mac --dir
+        env:
+          npm_config_build_from_source: true
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SeeleLink-macos
+          path: release/mac/
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────
+  # Windows Build
+  # ─────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite
+        run: npm run build
+
+      - name: Package Windows
+        run: npm run package -- --win --dir
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SeeleLink-windows
+          path: release/win-unpacked/
+          retention-days: 14
