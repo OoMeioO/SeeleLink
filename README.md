@@ -1,197 +1,136 @@
 # SeeleLink ⚡
 
-Unified Connector Tool - SSH, Serial, PowerShell, CMD, WebSocket
+统一连接工具 — SSH · Serial · PowerShell · Bash · WebSocket · Android · IR
+
+---
 
 ## Features
 
-- 🎨 **Modern Dark UI** - Clean dark theme interface with xterm.js terminal
-- 📡 **Multi-Protocol Support** - SSH, Serial, PowerShell, CMD, WebSocket
-- 🔄 **Tabbed Interface** - Manage multiple connections simultaneously
-- 💾 **Persistent Configuration** - Save connections and quick command buttons
-- 🔌 **Control API (TCP JSON)** - Full external control via `127.0.0.1:9380`
-- 🤖 **MCP Server (HTTP+SSE)** - AI tool integration via `127.0.0.1:9381`
-- ⚙️ **Settings UI** - Configure Control API and MCP server via Settings tab
+**One tool, every protocol.** No more juggling multiple terminal apps.
 
-> 📖 **OpenClaw Integration**: See [SEELINK_CONTROL.md](SEELINK_CONTROL.md)
+| Category | What you get |
+|----------|-------------|
+| **Multi-Protocol** | SSH · Serial · PowerShell · Bash · WebSocket · Android ADB · IR |
+| **External Control** | Control API (72 commands, TCP `:9380`) · MCP Server (89 tools, HTTP `:9381`) |
+| **UI Automation** | Mouse, keyboard, screenshot, drag — absolute coordinate control |
+| **AI Integration** | Native MCP/JSON-RPC 2.0 endpoint, OpenClaw-ready |
+| **Security** | AES-256-GCM encrypted passwords, shell injection protection |
+| **Session Logging** | ANSI-stripped logs for SSH/Serial/PS/Bash/WS with buffered writes |
+| **Plugin System** | Isolated subprocess plugins at `~/.seelelink/plugins/` |
+| **UI** | React + TypeScript, frameless window, dark/light themes, VSCode-style layout |
 
-## Quick Start
+---
 
-### Development Mode
+## 功能
+
+| 类别 | 支持 |
+|------|------|
+| **终端协议** | SSH、Serial、PowerShell、Bash、WebSocket |
+| **设备控制** | Android ADB（WiFi/USB）、IR 红外 |
+| **外部控制** | Control API（TCP `:9380`）、MCP Server（HTTP `:9381`） |
+| **窗口自动化** | 鼠标、键盘、截图、拖拽 — 支持绝对坐标操作 |
+| **UI** | React + TypeScript、无边框窗口、深浅主题、VSCode 风格 |
+| **安全** | 密码 AES-256-GCM 加密、Shell 注入防护、坐标范围校验 |
+| **插件** | 子进程隔离架构（`~/.seelelink/plugins/`） |
+
+---
+
+## 快速开始
 
 ```bash
 npm install
-npm run electron:dev
+npm run electron:dev   # 开发模式（构建 + 启动）
+npm run build           # 仅构建
+npm run package         # 打包 → SeeleLink.exe
 ```
 
-### Production Build
+> 截图黑屏？用 `npm run electron:dev -- --debug-gpu` 禁用硬件加速，或在 Settings 配置截图模式（auto / foreground / gdi）。
 
-```bash
-npm run build        # Build frontend
-npm run package      # Package Electron app
-```
+---
 
-Output: `E:\SeeleLink\release\win-unpacked\SeeleLink.exe`
+## 外部控制 API
 
-## Architecture
-
-```
-SeeleLink/
-├── electron/
-│   ├── main.cjs      # Electron main process (IPC handlers, connection management)
-│   └── preload.js    # Preload script (IPC bridge to renderer)
-├── src/
-│   └── ui/
-│       └── App.tsx   # React main component
-├── dist/             # TypeScript build output
-├── dist-electron/    # Vite build output (HTML/JS/CSS)
-└── SEELINK_CONTROL.md  # Full API documentation
-```
-
-### Core Concepts
-
-- **ConnectionTab** - Each tab is an independent connection instance
-- **IPC Bridge** - Main process and renderer communicate via `ipcMain`/`ipcRenderer`
-- **node-pty** - PowerShell and CMD use `node-pty` for pseudo-terminal emulation
-- **xterm.js** - Terminal emulation in the renderer process
-
-## Supported Features
-
-### SSH ✅
-- Connect/disconnect SSH servers
-- Multiple tabs (same server can have multiple sessions)
-- Independent terminal (each tab has separate input/output)
-- Quick Commands (preset command buttons)
-- Connection persistence
-
-### Serial ✅
-- Connect/disconnect serial ports
-- Dynamic COM port enumeration
-- Multiple configs per COM port (different baud rates)
-- Only one connection per COM port at a time
-- Connection persistence
-
-### PowerShell ✅
-- Connect/disconnect local PowerShell via `node-pty`
-- Command execution with ANSI color support
-- Auto-scroll and backspace handling
-
-### CMD ✅
-- Connect/disconnect local CMD via `node-pty`
-- Command execution with ANSI color support
-
-### WebSocket ✅
-- Connect to WebSocket servers
-- Send/receive message UI
-- Connection persistence
-
-### Control API (TCP JSON) ✅
-- **Port:** `9380` (configurable via Settings)
-- **Protocol:** JSON over TCP, one object per line
-- Full external control for SSH, Serial, PowerShell, CMD, WebSocket
-- See [SEELINK_CONTROL.md](SEELINK_CONTROL.md) for complete protocol reference
-
-### MCP Server ✅ (Basic)
-- **Port:** `9381` (configurable via Settings, disabled by default)
-- **Protocol:** HTTP + SSE (Model Context Protocol)
-- Tools for all connection types
-- Note: Uses `@modelcontextprotocol/sdk` - requires Node.js ESM support
-
-### Settings Tab ✅
-- Control API enable/disable and host/port configuration
-- MCP Server enable/disable and host/port configuration
-- Copy OpenClaw config button for easy integration
-
-## Todo
-
-- [ ] Serial port hot-plug detection
-- [ ] Connection timeout auto-reconnect
-- [ ] Terminal search functionality
-- [ ] Theme customization
-- [ ] Connection import/export
-- [ ] Connection grouping
-
-## Dependencies
-
-### Production
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `ssh2` | ^1.15.0 | SSH client |
-| `serialport` | ^13.0.0 | Serial communication |
-| `@xterm/xterm` | ^6.0.0 | Terminal emulator |
-| `@xterm/addon-fit` | ^0.11.0 | Terminal auto-resize |
-| `ws` | ^8.16.0 | WebSocket client |
-| `node-pty` | ^1.1.0 | Pseudo-terminal (PowerShell/CMD) |
-| `@modelcontextprotocol/sdk` | ^1.0.0 | MCP protocol (ESM only) |
-| `electron` | ^30.0.0 | Desktop framework |
-| `react` | ^18.3.0 | UI framework |
-
-### Development
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `typescript` | ^5.4.0 | TypeScript compilation |
-| `vite` | ^5.2.0 | Build tool |
-| `@vitejs/plugin-react` | ^4.2.0 | React plugin |
-| `electron-builder` | ^24.13.0 | App packaging |
-| `tsx` | ^4.7.0 | TypeScript execution |
-
-## Log & Config Files
-
-### Log Files
-- **Main log:** `C:\Users\<username>\.seelelink\electron.log`
-- **Debug log:** `C:\Users\<username>\.seelelink\debug.log`
-
-### Config Files
-- **Connections:** `C:\Users\<username>\.seelelink\connections.json`
-- **Commands:** `C:\Users\<username>\.seelelink\commands.json`
-- **App Settings:** `C:\Users\<username>\.seelelink\config.json`
-
-## Control API Example
+### Control API — `9380`（TCP JSON）
 
 ```javascript
 const net = require('net');
-
-function seelelinkCommand(cmd, args = []) {
-  return new Promise((resolve, reject) => {
-    const client = new net.Socket();
-    client.connect(9380, '127.0.0.1', () => {
-      client.write(JSON.stringify({ cmd, args }) + '\n');
-    });
-    let data = '';
-    client.on('data', d => { data += d.toString(); });
-    client.on('end', () => {
-      const res = JSON.parse(data.trim());
-      if (res.ok) resolve(res.result);
-      else reject(new Error(res.error));
-      client.destroy();
-    });
-    client.on('error', reject);
-  });
-}
-
-await seelelinkCommand('ping');
-await seelelinkCommand('ps:connect', ['my-session']);
-await seelelinkCommand('ps:send', ['my-session', 'Get-Date\r']);
+const client = new net.Socket();
+client.connect(9380, '127.0.0.1', () => {
+  client.write(JSON.stringify({ cmd: 'control:mouse:position' }) + '\n');
+});
+client.on('data', d => console.log(JSON.parse(d.toString())));
 ```
 
-## OpenClaw Integration
+### MCP Server — `9381`（HTTP + SSE）
 
-Add to your OpenClaw config:
+OpenClaw 配置（`~/.openclaw/config.json`）：
 
 ```json
-{
-  "mcpServers": {
-    "SeeleLink": {
-      "url": "http://127.0.0.1:9381/mcp"
-    }
-  }
-}
+{ "mcpServers": { "SeeleLink": { "url": "http://127.0.0.1:9381/" } } }
 ```
 
-Or use the Control API directly in a ClawFlow skill.
+| 接口 | 命令/工具数 | 说明 |
+|------|------------|------|
+| Control API | **72** 个命令 | 鼠标、键盘、截图、窗口、SSH、Serial、插件、配置等 |
+| MCP | **89** 个工具 | 与 Control API 功能完全对等，JSON-RPC 2.0 |
 
-See [SEELINK_CONTROL.md](SEELINK_CONTROL.md) for complete documentation.
+详细文档：[docs/control-api.md](docs/control-api.md) · [docs/mcp.md](docs/mcp.md) · [docs/api-reference.md](docs/api-reference.md)
+
+---
+
+## 项目结构
+
+```
+electron/          主进程（IPC、连接管理、窗口）
+src/ui/           React 渲染进程（终端、Android、IR、设置）
+src/core/         连接存储、事件总线、插件管理
+src/services/     控制服务层（mouse/keyboard/screen/debug）
+platform/         跨平台适配（Windows Win32 / Linux X11 / macOS CGEvent）
+docs/             完整文档
+tests/integration/ 功能覆盖测试（115 项，自动化）
+```
+
+---
+
+## 数据存储
+
+```
+~/.seelelink/
+├── connections.json    连接配置
+├── commands.json       快捷命令
+├── ir-data.json        IR 红外数据
+├── config.json         应用设置
+├── electron.log        主日志
+├── debug.log           调试日志
+├── logs/<Type>/        会话日志（ANSI 脱色）
+└── plugins/<id>/       插件
+```
+
+---
+
+## 协议
+
+| 协议 | 库 | 备注 |
+|------|---|------|
+| SSH | `ssh2` | TCP 直连 |
+| Serial | `serialport` | 可配置波特率 |
+| PowerShell | `node-pty` | ConPTY 伪终端 |
+| Bash | `node-pty` | MSYS2/Git Bash |
+| WebSocket | `ws` | TCP 套接字 |
+| Android | `adb`（spawn） | WiFi ADB / USB |
+| IR | 内置 | 串口或网络 |
+
+---
+
+## 平台
+
+| 平台 | 状态 |
+|------|------|
+| Windows | ✅ 完整 |
+| macOS | ⚠️ node-pty 需源码编译 |
+| Linux | ⚠️ ADB / node-pty 需配置 |
+
+---
 
 ## License
 

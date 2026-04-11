@@ -1,780 +1,872 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+/**
+ * SeeleLink - Main Application
+ * 
+ * VSCode + OpenClaw inspired minimalist design
+ */
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import '@xterm/xterm/css/xterm.css';
+import './index.css';
+import { useTheme } from './themes';
+import { TerminalPanel, type TerminalPanelTab } from './terminal';
+import { AndroidPage } from './components/AndroidPage';
+import type { ConnectionTab } from './components/AndroidPage';
+import { IRPage } from './components/IRPage';
+import type { SavedConn, ComPortInfo, IRData } from './types';
 
-type TabType = 'ssh' | 'serial' | 'powershell' | 'cmd' | 'websocket' | 'settings';
+// Lucide icons for consistent icon set
+import {
+  Monitor, Terminal as TerminalIcon, Cable, Command, Globe, Smartphone, Tv, Settings,
+  Plus, Search, X, Minus, Square, Activity, FileText, Folder, LogOut, Moon, Sun, Info,
+  ZoomIn, ZoomOut, RefreshCw, RotateCcw, Server, Database, Monitor as MonitorIcon, TerminalSquare, Hash,
+  Palette,
+} from 'lucide-react';
 
-interface SavedConn {
-  id: string; name: string; type: TabType;
-  host?: string; port?: string; username?: string; password?: string;
-  serialPort?: string; baudRate?: string; url?: string;
-}
+// Tab type
+export type TabType = 'ssh' | 'serial' | 'powershell' | 'cmd' | 'websocket' | 'android' | 'ir' | 'settings';
 
-interface CommandButton {
-  id: string; name: string; commands: string[];
-}
+// Helper: wrap Lucide icon in a fixed-size centering box
+// Lucide SVG content sits slightly high within the 24x24 viewBox.
+// paddingTop shifts icon down to align visual center with text baseline.
+const iconWrap = (icon: React.ReactNode) => (
+  <span style={{ width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+    <span style={{ paddingTop: 0.8 }}>{icon}</span>
+  </span>
+);
 
-interface ConnectionTab {
-  id: string;
-  connId: string;
-  conn: SavedConn;
-  isConnected: boolean;
-  isInitializing?: boolean;
-  term: any;
-  fitAddon: any;
-  containerRef: React.RefObject<HTMLDivElement>;
-}
+// Tab config with Lucide icons
+const TABS: { id: TabType; label: string; icon: React.ReactNode }[] = [
+  { id: 'ssh', label: 'SSH', icon: iconWrap(<Monitor size={16} />) },
+  { id: 'serial', label: 'Serial', icon: iconWrap(<Cable size={16} />) },
+  { id: 'powershell', label: 'PowerShell', icon: iconWrap(<TerminalIcon size={16} />) },
+  { id: 'cmd', label: 'Bash', icon: iconWrap(<Command size={16} />) },
+  { id: 'websocket', label: 'WebSocket', icon: iconWrap(<Globe size={16} />) },
+  { id: 'android', label: 'Android', icon: iconWrap(<Smartphone size={16} />) },
+  { id: 'ir', label: 'IR', icon: iconWrap(<Tv size={16} />) },
+  { id: 'settings', label: 'Settings', icon: iconWrap(<Settings size={16} />) },
+];
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      psConnect: (connId: string) => Promise<void>; psExecute: (connId: string, cmd: string) => Promise<void>; psDisconnect: (connId: string) => Promise<void>;
-      onPsData: (connId: string, callback: (data: string) => void) => void;
-      onPsError: (connId: string, callback: (data: string) => void) => void;
-      cmdConnect: (connId: string) => Promise<void>; cmdExecute: (connId: string, cmd: string) => Promise<void>; cmdDisconnect: (connId: string) => Promise<void>;
-      onCmdData: (connId: string, callback: (data: string) => void) => void;
-      sshConnect: (config: { connId: string; host: string; username: string; password?: string }) => Promise<void>;
-      sshDisconnect: (connId: string) => Promise<void>; 
-      sshExecute: (connId: string, cmd: string) => Promise<void>;
-      onSshData: (connId: string, callback: (data: string) => void) => void;
-      serialConnect: (config: { connId: string; port: string; baudRate: string }) => Promise<void>;
-      serialDisconnect: (connId: string) => Promise<void>;
-      serialExecute: (connId: string, data: string) => Promise<void>;
-      onSerialData: (connId: string, callback: (data: string) => void) => void;
-      serialList: () => Promise<string[]>;
-      wsConnect: (connId: string, url: string) => Promise<void>;
-      wsDisconnect: (connId: string) => Promise<void>;
-      wsSend: (connId: string, data: string) => Promise<void>;
-      onWsData: (connId: string, callback: (data: string) => void) => void;
-      consoleLog: (...args: any[]) => void;
-      saveConnection: (conn: SavedConn) => Promise<void>; loadConnections: () => Promise<SavedConn[]>;
-      deleteConnection: (id: string) => Promise<void>;
-      saveCommands: (connId: string, commands: CommandButton[]) => Promise<void>;
-      loadCommands: (connId: string) => Promise<CommandButton[]>;
-    };
-  }
-}
-
-const styles = {
-  container: { display: 'flex', flexDirection: 'column' as const, height: '100vh', backgroundColor: '#1e1e1e', color: '#e5e5e5', fontFamily: 'system-ui' },
-  header: { padding: '10px 20px', backgroundColor: '#2d2d2d', borderBottom: '1px solid #404040', display: 'flex', alignItems: 'center', gap: 8, fontSize: 18, fontWeight: 600 },
-  logo: { fontSize: 20 },
-  tabBar: { display: 'flex', backgroundColor: '#252525', borderBottom: '1px solid #404040', padding: '0 12px' },
-  tab: { display: 'flex', alignItems: 'center', padding: '10px 20px', backgroundColor: 'transparent', border: 'none', borderBottom: '2px solid transparent', color: '#888', cursor: 'pointer', fontSize: 14 },
-  tabActive: { color: '#fff', borderBottomColor: '#3b82f6' },
-  main: { display: 'flex', flex: 1, overflow: 'hidden' },
-  sidebar: { width: 220, backgroundColor: '#252525', borderRight: '1px solid #404040', display: 'flex', flexDirection: 'column' as const },
-  sidebarHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #333' },
-  addBtn: { backgroundColor: '#3b82f6', border: 'none', borderRadius: 6, color: '#fff', padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  connList: { flex: 1, overflow: 'auto', padding: 8 },
-  empty: { padding: 20, textAlign: 'center' as const, color: '#666', fontSize: 13 },
-  connItem: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 4 },
-  connItemActive: { backgroundColor: '#3d3d3d' },
-  connInfo: { flex: 1, minWidth: 0 },
-  connName: { fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
-  connDetail: { fontSize: 12, color: '#888', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' },
-  delBtn: { background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: 18, padding: '0 4px' },
-  content: { flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' },
-  panelHeader: { padding: '10px 16px', borderBottom: '1px solid #404040', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#2d2d2d' },
-  btn: { padding: '6px 14px', borderRadius: 6, border: 'none', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 500 },
-  noConn: { flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center' },
-  status: { padding: '6px 16px', backgroundColor: '#252525', borderTop: '1px solid #404040', display: 'flex', gap: 12, fontSize: 12, color: '#888' },
-  modalOverlay: { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  modal: { backgroundColor: '#2d2d2d', borderRadius: 12, width: 420, maxHeight: '80vh', display: 'flex', flexDirection: 'column' as const, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' },
-  modalHeader: { padding: '16px 20px', borderBottom: '1px solid #404040', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 600 },
-  modalClose: { background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 20 },
-  modalBody: { padding: 20, overflow: 'auto', display: 'flex', flexDirection: 'column' as const, gap: 16 },
-  formGroup: { display: 'flex', flexDirection: 'column' as const, gap: 6 },
-  formRow: { display: 'flex', gap: 12 },
-  label: { fontSize: 13, color: '#888' },
-  input: { padding: '10px 12px', backgroundColor: '#1e1e1e', border: '1px solid #404040', borderRadius: 8, color: '#e5e5e5', fontSize: 14, outline: 'none' },
-  modalFooter: { padding: '16px 20px', borderTop: '1px solid #404040', display: 'flex', justifyContent: 'flex-end', gap: 12 },
-  connTabBar: { display: 'flex', backgroundColor: '#1e1e1e', borderBottom: '1px solid #404040', overflow: 'auto' },
-  connTab: { display: 'flex', alignItems: 'center', padding: '8px 16px', backgroundColor: '#252525', border: 'none', borderRight: '1px solid #333', color: '#888', cursor: 'pointer', fontSize: 13, gap: 8 },
-  connTabActive: { backgroundColor: '#2d2d2d', color: '#fff' },
-  connTabClose: { background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: 14, padding: '0 4px', marginLeft: 4 },
-  terminal: { flex: 1, backgroundColor: '#0d0d0d', padding: 8, overflow: 'hidden', cursor: 'text', display: 'flex', flexDirection: 'column' as const },
-  cmdButtons: { backgroundColor: '#252525', borderBottom: '1px solid #404040', padding: '8px 12px', display: 'flex', gap: 6, flexWrap: 'wrap' as const },
-};
+// ============================================================
+// Main App Component
+// ============================================================
 
 export default function App() {
+  const { toggleTheme, theme, styles, themeName, colorScheme, setColorScheme, availableSchemes } = useTheme();
+  
+  // State
   const [activeTab, setActiveTab] = useState<TabType>('ssh');
   const [savedConns, setSavedConns] = useState<SavedConn[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ name: '', host: '', port: '22', username: '', password: '', serialPort: '', baudRate: '115200', url: 'ws://localhost:8080' });
-  const [availableComPorts, setAvailableComPorts] = useState<string[]>([]);
-  
-  const [connTabs, setConnTabs] = useState<ConnectionTab[]>([]);
+  const [form, setForm] = useState({
+    name: '', host: '', port: '22', username: '', password: '',
+    serialPort: '', baudRate: '115200', url: 'ws://localhost:8080'
+  });
+  const [availableComPorts, setAvailableComPorts] = useState<ComPortInfo[]>([]);
+  const [connTabs, setConnTabs] = useState<TerminalPanelTab[]>([]);
   const [activeConnTabId, setActiveConnTabId] = useState<string | null>(null);
-  const [commandButtons, setCommandButtons] = useState<CommandButton[]>([]);
-  const [showCmdModal, setShowCmdModal] = useState(false);
-  const [editingButton, setEditingButton] = useState<CommandButton | null>(null);
-  const [buttonForm, setButtonForm] = useState({ name: '', commands: '' });
-  
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // WebSocket state
-  const [wsMessages, setWsMessages] = useState<Record<string, string[]>>({});
-  const [wsInput, setWsInput] = useState('');
-  const wsLogRef = useRef<HTMLDivElement>(null);
+  // Android page state - lifted here so it survives tab switches
+  const [androidTabs, setAndroidTabs] = useState<ConnectionTab[]>([]);
+  const [androidActiveTab, setAndroidActiveTab] = useState<ConnectionTab | null>(null);
 
-  // Settings state
-  const [controlApiConfig, setControlApiConfig] = useState({ enabled: true, host: '127.0.0.1', port: 9380 });
-  const [mcpApiConfig, setMcpApiConfig] = useState({ enabled: false, host: '127.0.0.1', port: 9381 });
-  const [settingsSaved, setSettingsSaved] = useState(false);
+  // IR page state - lifted here so it survives tab switches
+  const [irData, setIrData] = useState<IRData>({
+    deviceTypes: [],
+    commands: [],
+    devices: [],
+    sequences: [],
+  });
 
-  // Use refs to avoid stale closure issues
-  const connectedRefs = useRef<Map<string, boolean>>(new Map());
-  const connTabsRef = useRef(connTabs);
-  const initRef = useRef<Set<string>>(new Set());
-
-  // Keep connTabsRef in sync
+  // Load IR data on mount
   useEffect(() => {
-    connTabsRef.current = connTabs;
-  }, [connTabs]);
-
-  const activeTabData = connTabs.find(t => t.id === activeConnTabId);
-
-  // Auto-scroll WebSocket log to bottom
-  useEffect(() => {
-    if (wsLogRef.current) {
-      wsLogRef.current.scrollTop = wsLogRef.current.scrollHeight;
-    }
-  }, [wsMessages[activeTabData?.id]]);
-
-  useEffect(() => { loadConnections(); }, []);
-
-  // Load settings when Settings tab is active
-  useEffect(() => {
-    if (activeTab === 'settings' && window.electronAPI) {
-      window.electronAPI.controlApiGetConfig().then(cfg => { if (cfg) setControlApiConfig(cfg); });
-      window.electronAPI.mcpApiGetConfig().then(cfg => { if (cfg) setMcpApiConfig(cfg); });
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTabData?.conn && window.electronAPI) {
-      loadCommands(activeTabData.conn.id);
-    }
-  }, [activeTabData?.conn?.id]);
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClick = () => setContextMenu(prev => ({ ...prev, visible: false }));
-    if (contextMenu.visible) {
-      document.addEventListener('click', handleClick);
-      return () => document.removeEventListener('click', handleClick);
-    }
-  }, [contextMenu.visible]);
-
-  // Handle Ctrl+Shift+C for copy
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-        const selection = window.getSelection()?.toString() || '';
-        if (selection && activeTabData?.term) {
-          navigator.clipboard.writeText(selection);
-          e.preventDefault();
-        }
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeTabData]);
-
-  // Context menu handler for terminal
-  const handleTerminalContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    // Get selection from xterm
-    const selection = activeTabData?.term?.getSelection?.() || '';
-    if (selection) {
-      setContextMenu({ x: e.clientX, y: e.clientY, visible: true });
-    }
-  };
-
-  const handleCopySelection = () => {
-    const selection = activeTabData?.term?.getSelection?.() || '';
-    if (selection) {
-      navigator.clipboard.writeText(selection);
-    }
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
-
-  const initTerminal = useCallback(async (tab: ConnectionTab) => {
-    const tabId = tab.id;
-    if (initRef.current.has(tabId)) return; // Already initializing
-    if (tab.term) return; // Already has terminal
-    initRef.current.add(tabId);
-    
-    const container = tab.containerRef?.current;
-    if (!container) {
-      initRef.current.delete(tabId);
-      return;
-    }
-    
-    try {
-      const { Terminal } = await import('@xterm/xterm');
-      const { FitAddon } = await import('@xterm/addon-fit');
-      
-      const term = new Terminal({ 
-        cursorBlink: true, 
-        fontSize: 14, 
-        fontFamily: 'Consolas, monospace', 
-        theme: { background: '#0d0d0d', foreground: '#d4d4d4' }, 
-        allowTransparency: false,
-        cursorStyle: 'block',
-        cursorInactiveStyle: 'blink',
-        bellStyle: 'none',
-        enableBold: true,
-        drawBoldTextInBrightColors: true,
-        convertEol: true,
-        windowsMode: true,
-      });
-      
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
-      
-      // Update the tab in state with term and fitAddon
-      setConnTabs(prev => prev.map(t => t.id === tabId ? { ...t, term, fitAddon } : t));
-      connectedRefs.current.set(tabId, tab.isConnected);
-      
-      // PowerShell input - pass keystrokes directly to PTY backend
-      term.onData((data: string) => {
-        const isConnected = connectedRefs.current.get(tabId) || false;
-        if (window.electronAPI && isConnected) {
-          if (tab.conn.type === 'ssh') {
-            window.electronAPI.sshExecute(tab.connId, data);
-          } else if (tab.conn.type === 'serial') {
-            window.electronAPI.serialExecute(tab.connId, data);
-          } else if (tab.conn.type === 'powershell') {
-            // Direct passthrough to PTY
-            window.electronAPI.psExecute(tab.connId, data);
-          } else if (tab.conn.type === 'cmd') {
-            // Direct passthrough to PTY
-            window.electronAPI.cmdExecute(tab.connId, data);
-          }
-        }
-      });
-      
-      if (tab.conn.type === 'ssh') {
-        window.electronAPI?.onSshData(tab.connId, (data: string) => { if (term) term.write(data); });
-      }
-      
-      term.open(container);
-      fitAddon.fit();
-      term.focus();
-      
-    } catch (e) {
-      console.error('Terminal init error:', e);
-      initRef.current.delete(tabId);
-    }
+    window.electronAPI?.irLoad().then(data => {
+      if (data) setIrData(data);
+    }).catch(console.error);
   }, []);
 
-  // Initialize terminal when active tab changes
+  // Expose app state to window for Control API / MCP debug access
   useEffect(() => {
-    if (activeConnTabId) {
-      const tab = connTabs.find(t => t.id === activeConnTabId);
-      if (tab) {
-        initTerminal(tab);
+    (window as any).__seelelink_tabs = connTabs;
+    (window as any).__seelelink_active_tab = activeConnTabId;
+    (window as any).__seelelink_active_tab_id = activeConnTabId;
+    (window as any).__seelelink_conn_tabs = connTabs;
+    (window as any).__seelelink_active_tab_type = activeTab;
+  }, [connTabs, activeConnTabId, activeTab]);
+
+  // Global keyboard shortcuts for menu actions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === 'n') {
+        e.preventDefault();
+        setShowModal(true);
       }
-    }
-  }, [activeConnTabId, initTerminal, connTabs]);
+      if (ctrl && e.key === 't') {
+        e.preventDefault();
+        toggleTheme();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleTheme]);
 
-  const loadConnections = async () => { if (window.electronAPI) setSavedConns(await window.electronAPI.loadConnections()); };
-  const loadCommands = async (connId: string) => { if (window.electronAPI) setCommandButtons(await window.electronAPI.loadCommands(connId)); };
-  const saveCommands = async (connId: string, commands: CommandButton[]) => { if (window.electronAPI) await window.electronAPI.saveCommands(connId, commands); };
+  const [windowCaptureMode, setWindowCaptureMode] = useState<'auto' | 'foreground' | 'gdi'>('auto');
 
-  const openConnection = async (conn: SavedConn) => {
-    const newTab: ConnectionTab = {
-      id: `tab_${Date.now()}`,
-      connId: `${conn.id}_${Date.now()}`,
+  // Zoom state (50-200, default 100) — zoom implementation pending
+  const [zoom, setZoom] = useState(() => {
+    const stored = localStorage.getItem('seelelink-zoom');
+    return stored ? parseInt(stored, 10) : 100;
+  });
+
+  // Menu state
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [editMenuOpen, setEditMenuOpen] = useState(false);
+
+  // Status bar time — update every minute
+  const [currentTime, setCurrentTime] = useState(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
+
+  // Terminal refs - kept for backward compat, actual refs are in TerminalPanel
+
+  // Load saved connections
+  useEffect(() => {
+    window.electronAPI?.loadConnections().then(setSavedConns).catch(console.error);
+    window.electronAPI?.windowCaptureGetConfig().then(cfg => {
+      if (cfg?.mode) setWindowCaptureMode(cfg.mode);
+    }).catch(console.error);
+  }, []);
+
+  // Window capture mode handler
+  const handleWindowCaptureModeChange = async (mode: 'auto' | 'foreground' | 'gdi') => {
+    setWindowCaptureMode(mode);
+    await window.electronAPI?.windowCaptureSetConfig({ mode } as any);
+  };
+
+  // Handle terminal input — delegate to TerminalPanel via global
+  const handleTerminalInput = useCallback((tabId: string, data: string) => {
+    const send = (window as any).__terminalPanelInput;
+    if (send) send(tabId, data);
+  }, []);
+
+  // Open connection
+  const openConnection = useCallback(async (conn: SavedConn) => {
+    const tabId = `tab-${Date.now()}`;
+    // Generate unique connId per tab instance to allow multiple tabs for the same saved connection
+    const connId = `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const newTab: TerminalPanelTab = {
+      id: tabId,
+      connId,
       conn,
       isConnected: false,
-      term: null,
-      fitAddon: null,
-      containerRef: React.createRef<HTMLDivElement>(),
     };
-    
-    connectedRefs.current.set(newTab.id, false);
+
     setConnTabs(prev => [...prev, newTab]);
-    setActiveConnTabId(newTab.id);
-  };
+    setActiveConnTabId(tabId);
+  }, []);
 
-  const closeTab = async (tabId: string) => {
-    const tab = connTabsRef.current.find(t => t.id === tabId);
-    if (!tab) return;
-    
-    if (tab.term) {
-      try { tab.term.dispose(); } catch (e) {}
-    }
-    initRef.current.delete(tabId);
-
-    // Clear WebSocket messages for this tab
-    if (tab.conn.type === 'websocket') {
-      setWsMessages(prev => { const n = {...prev}; delete n[tabId]; return n; });
-    }
-
-    if (tab.isConnected && window.electronAPI) {
-      if (tab.conn.type === 'ssh') await window.electronAPI.sshDisconnect(tab.connId);
-      else if (tab.conn.type === 'powershell') await window.electronAPI.psDisconnect(tab.connId);
-      else if (tab.conn.type === 'serial') await window.electronAPI.serialDisconnect(tab.connId);
-      else if (tab.conn.type === 'websocket') await window.electronAPI.wsDisconnect(tab.connId);
-    }
-    
-    connectedRefs.current.delete(tabId);
-    setConnTabs(prev => prev.filter(t => t.id !== tabId));
-    const remaining = connTabsRef.current.filter(t => t.id !== tabId);
-    setActiveConnTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
-  };
-
-  const handleConnect = useCallback(async () => {
-    if (!activeTabData || !window.electronAPI) return;
-    const tab = activeTabData;
-    
-    if (tab.term) {
-      tab.term.clear();
-      tab.term.write('[Connecting...]\r\n');
-    }
-    
-    try {
-      if (tab.conn.type === 'ssh') {
-        window.electronAPI.onSshData(tab.connId, (data: string) => {
-          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
-          if (currentTab?.term) currentTab.term.write(data);
-        });
-        await window.electronAPI.sshConnect({ connId: tab.connId, host: tab.conn.host || '', username: tab.conn.username || '', password: tab.conn.password || '' });
-      } else if (tab.conn.type === 'powershell') {
-        // Register listeners BEFORE connect
-        window.electronAPI.onPsData(tab.connId, (data: string) => {
-          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
-          if (currentTab?.term) {
-            // For PowerShell: remove backspace and bell characters that cause display issues
-            // but let xterm handle ANSI colors and cursor positioning
-            const clean = data
-              .replace(/\x08/g, '') // Remove backspace
-              .replace(/\x07/g, ''); // Remove bell
-            currentTab.term.write(clean);
-            // Auto-scroll to bottom
-            currentTab.term.scrollToBottom();
-          }
-        });
-        window.electronAPI.onPsError(tab.connId, (data: string) => {
-          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
-          if (currentTab?.term) currentTab.term.write('[ERR] ' + data);
-        });
-        await window.electronAPI.psConnect(tab.connId);
-      } else if (tab.conn.type === 'cmd') {
-        window.electronAPI.onCmdData(tab.connId, (data: string) => {
-          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
-          if (currentTab?.term) {
-            const clean = data.replace(/\x08/g, '').replace(/\x07/g, '');
-            currentTab.term.write(clean);
-            currentTab.term.scrollToBottom();
-          }
-        });
-        await window.electronAPI.cmdConnect(tab.connId);
-      } else if (tab.conn.type === 'serial') {
-        window.electronAPI.onSerialData(tab.connId, (data: string) => {
-          const currentTab = connTabsRef.current.find(t => t.id === tab.id);
-          if (currentTab?.term) currentTab.term.write(data);
-        });
-        const result = await window.electronAPI.serialConnect({ connId: tab.connId, port: tab.conn.serialPort || 'COM1', baudRate: tab.conn.baudRate || '115200' });
-        if (result === 'port in use') {
-          if (tab.term) tab.term.write('\r\n[Error] ' + tab.conn.serialPort + ' is already in use\r\n');
-          return;
+  // Close tab
+  const closeTab = useCallback((tabId: string) => {
+    setConnTabs(prev => {
+      const tab = prev.find(t => t.id === tabId);
+      if (tab) {
+        switch (tab.conn.type) {
+          case 'ssh': window.electronAPI?.sshDisconnect(tab.connId); break;
+          case 'serial': window.electronAPI?.serialDisconnect(tab.connId); break;
+          case 'powershell': window.electronAPI?.psDisconnect(tab.connId); break;
+          case 'cmd': window.electronAPI?.cmdDisconnect(tab.connId); break;
+          case 'websocket': window.electronAPI?.wsDisconnect(tab.connId); break;
         }
-      } else if (tab.conn.type === 'websocket') {
-        window.electronAPI?.onWsData(tab.connId, (data: string) => {
-          setWsMessages(prev => ({ ...prev, [tab.id]: [...(prev[tab.id] || []), data] }));
-        });
-        await window.electronAPI?.wsConnect(tab.connId, tab.conn.url || 'ws://localhost:8080');
       }
-      connectedRefs.current.set(tab.id, true);
-      setConnTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isConnected: true } : t));
-    } catch (e: any) {
-      if (tab.term) tab.term.write('\r\n[Error] ' + e.message + '\r\n');
+      const remaining = prev.filter(t => t.id !== tabId);
+      // If closing active tab, switch to first remaining tab
+      setActiveConnTabId(cur => cur === tabId ? (remaining[0]?.id ?? null) : cur);
+      return remaining;
+    });
+  }, []);
+
+  // Delete connection
+  const deleteConnection = useCallback(async (id: string) => {
+    await window.electronAPI?.deleteConnection(id);
+    setSavedConns(prev => prev.filter(c => c.id !== id));
+  }, []);
+
+  // Get active tab connections (filtered by search)
+  const activeTabConns = savedConns
+    .filter(c => c.type === activeTab)
+    .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  // Close menus when clicking outside or pressing Escape
+  useEffect(() => {
+    const handleClick = () => {
+      setFileMenuOpen(false);
+      setEditMenuOpen(false);
+      setViewMenuOpen(false);
+      setHelpMenuOpen(false);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setFileMenuOpen(false);
+        setEditMenuOpen(false);
+        setViewMenuOpen(false);
+        setHelpMenuOpen(false);
+      }
+    };
+    document.addEventListener('click', handleClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Get the active connection tab
+  const activeConnTab = connTabs.find(t => t.id === activeConnTabId);
+
+  // Render empty state content
+  const renderEmptyContent = () => (
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      height: '100%',
+      color: theme.textTertiary,
+    }}>
+      <Activity size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
+      <div style={{ fontSize: 14, marginBottom: 4 }}>Select a connection to get started</div>
+      <div style={{ fontSize: 12, opacity: 0.7 }}>Or click + to add a new connection</div>
+    </div>
+  );
+
+  // Settings row helper — consistent visual pattern for Settings page
+  function SettingsRow({ icon, label, description, children }: {
+    icon: React.ReactNode; label: string; description: string; children: React.ReactNode;
+  }) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${theme.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ color: theme.textSecondary, marginTop: 2, flexShrink: 0 }}>{icon}</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: theme.text }}>{label}</div>
+            <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>{description}</div>
+          </div>
+        </div>
+        <div style={{ flexShrink: 0, marginLeft: 16 }}>{children}</div>
+      </div>
+    );
+  }
+
+  // Render Settings content
+  const renderSettings = () => (
+    <div style={{ padding: '24px 32px', maxWidth: 600 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: theme.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Settings size={20} style={{ verticalAlign: 'middle' }} /> Settings
+      </h2>
+
+      {/* Theme */}
+      <SettingsRow icon={themeName === 'dark' ? <Moon size={16} style={{ verticalAlign: 'middle' }} /> : <Sun size={16} style={{ verticalAlign: 'middle' }} />} label="Theme" description="Switch between light and dark mode">
+        <button type="button" style={{ ...styles.button, minWidth: 100, display: 'flex', alignItems: 'center', gap: 6 }} onClick={toggleTheme}>
+          {themeName === 'dark' ? <><Moon size={14} style={{ verticalAlign: 'middle' }} /> Dark</> : <><Sun size={14} style={{ verticalAlign: 'middle' }} /> Light</>}
+        </button>
+      </SettingsRow>
+
+      {/* Color Scheme */}
+      <SettingsRow icon={<Palette size={16} style={{ verticalAlign: 'middle' }} />} label="Color Scheme" description="Adjust UI accent colors (Morandi muted tones)">
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {availableSchemes.map(scheme => {
+            const isActive = colorScheme.id === scheme.id;
+            return (
+              <button
+                key={scheme.id}
+                type="button"
+                onClick={() => setColorScheme(scheme.id)}
+                title={scheme.description}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: 11,
+                  border: `1px solid ${isActive ? theme.primary : theme.border}`,
+                  borderRadius: 6,
+                  backgroundColor: isActive ? theme.primary + '18' : theme.bg,
+                  color: isActive ? theme.primary : theme.text,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'all 0.15s',
+                  fontWeight: isActive ? 500 : 400,
+                }}
+              >
+                {/* Swatch dots */}
+                <span style={{ display: 'flex', gap: 4 }}>
+                  {scheme.swatches.map((color, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        backgroundColor: color,
+                        display: 'inline-block',
+                        border: '1px solid rgba(128,128,128,0.3)',
+                      }}
+                    />
+                  ))}
+                </span>
+                {scheme.label}
+              </button>
+            );
+          })}
+        </div>
+      </SettingsRow>
+
+      {/* Zoom */}
+      <SettingsRow icon={<ZoomIn size={16} style={{ verticalAlign: 'middle' }} />} label="Zoom" description="Adjust UI scale">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" title="Zoom out" onClick={() => { const v = Math.max(50, zoom - 10); setZoom(v); localStorage.setItem('seelelink-zoom', String(v)); }} style={{ ...styles.button, width: 28, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ZoomOut size={14} style={{ verticalAlign: 'middle' }} /></button>
+          <span style={{ fontSize: 12, color: theme.text, minWidth: 40, textAlign: 'center' }}>{zoom}%</span>
+          <button type="button" title="Zoom in" onClick={() => { const v = Math.min(200, zoom + 10); setZoom(v); localStorage.setItem('seelelink-zoom', String(v)); }} style={{ ...styles.button, width: 28, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ZoomIn size={14} style={{ verticalAlign: 'middle' }} /></button>
+          <button type="button" title="Reset zoom" onClick={() => { setZoom(100); localStorage.setItem('seelelink-zoom', '100'); }} style={{ ...styles.button, width: 28, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}><Minus size={14} style={{ verticalAlign: 'middle' }} /></button>
+        </div>
+      </SettingsRow>
+
+      {/* Control API */}
+      <SettingsRow icon={<Server size={16} style={{ verticalAlign: 'middle' }} />} label="Control API" description="Remote control endpoint (127.0.0.1:9380)">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: theme.success + '22', color: theme.success }}>Enabled</span>
+          <button type="button" title="Restart Control API" style={{ ...styles.button, height: 26, padding: '0 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
+            window.electronAPI?.controlApiRestart?.();
+          }}><RotateCcw size={11} style={{ verticalAlign: 'middle' }} /> Restart</button>
+        </div>
+      </SettingsRow>
+
+      {/* MCP Server */}
+      <SettingsRow icon={<TerminalSquare size={16} style={{ verticalAlign: 'middle' }} />} label="MCP Server" description="Model Context Protocol server (127.0.0.1:9381)">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: theme.success + '22', color: theme.success }}>Enabled</span>
+          <button type="button" title="Restart MCP Server" style={{ ...styles.button, height: 26, padding: '0 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
+            window.electronAPI?.mcpApiRestart?.();
+          }}><RotateCcw size={11} style={{ verticalAlign: 'middle' }} /> Restart</button>
+        </div>
+      </SettingsRow>
+
+      {/* Session Logs */}
+      <SessionLogSettings />
+
+      {/* Window Capture */}
+      <SettingsRow icon={<MonitorIcon size={16} style={{ verticalAlign: 'middle' }} />} label="Window Capture" description="How to capture the SeeleLink window screenshot">
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([
+            { key: 'auto', label: 'Auto' },
+            { key: 'foreground', label: 'Foreground' },
+            { key: 'gdi', label: 'GDI' },
+          ] as const).map(({ key, label }) => (
+            <button
+              type="button"
+              key={key}
+              onClick={() => handleWindowCaptureModeChange(key)}
+              style={{
+                padding: '4px 10px',
+                fontSize: 11,
+                border: `1px solid ${windowCaptureMode === key ? theme.primary || '#4a9eff' : theme.border}`,
+                borderRadius: 4,
+                backgroundColor: windowCaptureMode === key ? (theme.primary || '#4a9eff') + '22' : theme.bg,
+                color: windowCaptureMode === key ? (theme.primary || '#4a9eff') : theme.text,
+                cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </SettingsRow>
+
+      {/* About */}
+      <SettingsRow icon={<Info size={16} style={{ verticalAlign: 'middle' }} />} label="About" description="SeeleLink v0.1.0">
+        <></>
+      </SettingsRow>
+    </div>
+  );
+
+  // Render Protocol page content
+  const renderProtocolPage = (tabId: TabType) => {
+    switch (tabId) {
+      case 'android':
+        return (
+          <div style={{ padding: '24px 32px', maxWidth: 600 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: theme.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Smartphone size={20} /> Android
+            </h2>
+            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', color: theme.textSecondary }}>
+              <Smartphone size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
+              <div style={{ fontSize: 14, marginBottom: 8 }}>Android ADB Connection</div>
+              <div style={{ fontSize: 12, color: theme.textTertiary }}>Connect via ADB (Android Debug Bridge)</div>
+            </div>
+          </div>
+        );
+      case 'ir':
+        return (
+          <div style={{ padding: '24px 32px', maxWidth: 600 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: theme.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tv size={20} /> IR Control
+            </h2>
+            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', color: theme.textSecondary }}>
+              <Tv size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
+              <div style={{ fontSize: 14, marginBottom: 8 }}>IR Infrared Control</div>
+              <div style={{ fontSize: 12, color: theme.textTertiary }}>Control devices via infrared signals</div>
+            </div>
+          </div>
+        );
+      case 'websocket':
+        return (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            height: '100%', color: theme.textSecondary,
+          }}>
+            <Globe size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
+            <div style={{ fontSize: 14, marginBottom: 4 }}>WebSocket Connection</div>
+            <div style={{ fontSize: 12, color: theme.textTertiary }}>Connect to WebSocket servers</div>
+          </div>
+        );
+      default:
+        return null;
     }
-  }, [activeTabData]);
-
-  const handleDisconnect = useCallback(async () => {
-    if (!activeTabData || !window.electronAPI) return;
-    const tab = activeTabData;
-    
-    if (tab.conn.type === 'ssh') await window.electronAPI.sshDisconnect(tab.connId);
-    else if (tab.conn.type === 'powershell') await window.electronAPI.psDisconnect(tab.connId);
-    else if (tab.conn.type === 'cmd') await window.electronAPI.cmdDisconnect(tab.connId);
-    else if (tab.conn.type === 'serial') await window.electronAPI.serialDisconnect(tab.connId);
-    else if (tab.conn.type === 'websocket') await window.electronAPI.wsDisconnect(tab.connId);
-
-    connectedRefs.current.set(tab.id, false);
-    if (tab.term) tab.term.write('\r\n[Disconnected]\r\n');
-    setConnTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isConnected: false } : t));
-  }, [activeTabData]);
-
-  const handleButtonClick = async (button: CommandButton) => {
-    if (!activeTabData || !window.electronAPI || !activeTabData.isConnected) return;
-    for (const cmd of button.commands) {
-      if (activeTabData.conn.type === 'ssh') await window.electronAPI.sshExecute(activeTabData.connId, cmd + '\n');
-      else if (activeTabData.conn.type === 'powershell') await window.electronAPI.psExecute(activeTabData.connId, cmd + '\n');
-      await new Promise(r => setTimeout(r, 100));
-    }
   };
 
-  const handleSaveConn = async () => {
-    if (!window.electronAPI) return;
-    let id: string;
-    if (activeTab === 'ssh') id = `${form.host}-${form.username}`;
-    else if (activeTab === 'powershell') id = 'local-powershell';
-    else if (activeTab === 'serial') id = `serial-${form.name || 'untitled'}-${form.serialPort}-${form.baudRate}`;
-    else id = form.url;
-    
-    const conn: SavedConn = { id, name: form.name || (activeTab === 'ssh' ? form.host : activeTab === 'serial' ? `Serial on ${form.serialPort}` : form.url), type: activeTab, host: form.host, port: form.port, username: form.username, password: form.password, serialPort: form.serialPort, baudRate: form.baudRate, url: form.url };
-    await window.electronAPI.saveConnection(conn);
-    await loadConnections();
-    setShowModal(false);
-  };
-
-  const handleSaveCommand = async () => {
-    const commands = buttonForm.commands.split('\n').filter(c => c.trim());
-    if (!commands.length || !buttonForm.name.trim() || !activeTabData) return;
-    const newButton: CommandButton = { id: editingButton?.id || `btn_${Date.now()}`, name: buttonForm.name, commands };
-    let updated = editingButton ? commandButtons.map(b => b.id === editingButton.id ? newButton : b) : [...commandButtons, newButton];
-    setCommandButtons(updated);
-    await saveCommands(activeTabData.conn.id, updated);
-    setShowCmdModal(false);
-  };
-
-  const handleDeleteCommand = async (id: string) => {
-    if (!activeTabData) return;
-    const updated = commandButtons.filter(b => b.id !== id);
-    setCommandButtons(updated);
-    await saveCommands(activeTabData.conn.id, updated);
-  };
-
-  const filterConns = savedConns.filter(c => c.type === activeTab);
-
+  // Render
   return (
     <div style={styles.container}>
-      <div style={styles.header}><span style={styles.logo}>⚡</span><span>SeeleLink</span></div>
-      
-      <div style={styles.tabBar}>
-        {(['ssh', 'serial', 'powershell', 'cmd', 'websocket', 'settings'] as TabType[]).map(t => (
-          <button key={t} style={activeTab === t ? { ...styles.tab, ...styles.tabActive } : styles.tab} onClick={() => { setActiveTab(t); setActiveConnTabId(null); }}>{t === 'ssh' && '🖥️'} {t === 'serial' && '📡'} {t === 'powershell' && '💻'} {t === 'cmd' && '📝'} {t === 'websocket' && '🌐'} {t === 'settings' && '⚙️'} <span style={{marginLeft: 6}}>{t === 'settings' ? 'SETTINGS' : t.toUpperCase()}</span></button>
+      {/* Title Bar */}
+      <div style={{ ...styles.titleBar, padding: '0 16px' }}>
+        <div style={styles.logo}>
+          <Activity size={16} style={{ color: theme.primary }} />
+          <span>SeeleLink</span>
+        </div>
+        
+        <div style={{ ...styles.menuBar, marginLeft: 24 }} role="menubar">
+          <div style={{ position: 'relative' }}>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={fileMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: fileMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setFileMenuOpen(!fileMenuOpen); setEditMenuOpen(false); setViewMenuOpen(false); setHelpMenuOpen(false); }}>File</button>
+            {fileMenuOpen && (
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 200, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+                <MenuButton label="New Connection" shortcut="Ctrl+N" icon={<Plus size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => { setShowModal(true); setFileMenuOpen(false); }} />
+                <MenuButton label="Import Connections..." icon={<Folder size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => setFileMenuOpen(false)} />
+                <MenuButton label="Export Connections..." icon={<FileText size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => setFileMenuOpen(false)} />
+                <div style={{ height: 1, backgroundColor: theme.border, margin: '4px 0' }} />
+                <MenuButton label="Exit" shortcut="Alt+F4" icon={<LogOut size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => window.electronAPI?.windowClose()} />
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={editMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: editMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setEditMenuOpen(!editMenuOpen); setFileMenuOpen(false); setViewMenuOpen(false); setHelpMenuOpen(false); }}>Edit</button>
+            {editMenuOpen && (
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+                <MenuButton label="Copy" shortcut="Ctrl+C" />
+                <MenuButton label="Paste" shortcut="Ctrl+V" />
+                <div style={{ height: 1, backgroundColor: theme.border, margin: '4px 0' }} />
+                <MenuButton label="Select All" shortcut="Ctrl+A" />
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={viewMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: viewMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setViewMenuOpen(!viewMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false); setHelpMenuOpen(false); }}>View</button>
+            {viewMenuOpen && (
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+                <MenuButton label="Toggle Theme" shortcut="Ctrl+T" icon={<Moon size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => { toggleTheme(); setViewMenuOpen(false); }} />
+              </div>
+            )}
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={helpMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: helpMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setHelpMenuOpen(!helpMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false); setViewMenuOpen(false); }}>Help</button>
+            {helpMenuOpen && (
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+                <MenuButton label="Documentation" />
+                <MenuButton label="Report Issue" />
+                <div style={{ height: 1, backgroundColor: theme.border, margin: '4px 0' }} />
+                <MenuButton label="About SeeleLink" icon={<Info size={14} style={{ verticalAlign: 'middle' }} />} />
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div style={{ flex: 1 }} />
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, WebkitAppRegion: 'no-drag' as const }}>
+          <button className="window-control-btn" onClick={() => window.electronAPI?.windowMinimize()} title="Minimize"><Minus size={16} /></button>
+          <button className="window-control-btn" onClick={() => window.electronAPI?.windowMaximize()} title="Maximize"><Square size={14} /></button>
+          <button className="window-control-btn close" onClick={() => window.electronAPI?.windowClose()} title="Close"><X size={16} /></button>
+        </div>
+      </div>
+
+      {/* Protocol Tab Bar */}
+      <div role="tablist" aria-label="Connection type" style={{ display: 'flex', backgroundColor: theme.bgSecondary, borderBottom: `1px solid ${theme.border}`, padding: '0 16px', gap: 2, overflowX: 'auto' }}>
+        {TABS.map(tab => (
+          <button role="tab" key={tab.id} aria-selected={activeTab === tab.id ? "true" : "false"} onClick={() => setActiveTab(tab.id)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '0 16px', fontSize: 13, color: activeTab === tab.id ? theme.primary : theme.textSecondary, backgroundColor: activeTab === tab.id ? theme.bg : 'transparent', border: 'none', borderBottom: activeTab === tab.id ? `2px solid ${theme.primary}` : '2px solid transparent', cursor: 'pointer', transition: 'all 0.1s ease', height: 40, whiteSpace: 'nowrap' as const }}>
+            {tab.icon}
+            <span style={{ lineHeight: 1 }}>{tab.label}</span>
+          </button>
         ))}
       </div>
 
-      <div style={styles.main}>
-        {activeTab !== 'settings' && (
-        <div style={styles.sidebar}>
-          <div style={styles.sidebarHeader}>
-            <span style={{fontWeight: 600, fontSize: 13}}>Connections</span>
-            <button style={styles.addBtn} onClick={async () => {
-              if (activeTab === 'serial' && window.electronAPI) {
-                const ports = await window.electronAPI.serialList();
-                setAvailableComPorts(ports);
-                setForm({...form, serialPort: ports[0] || ''});
-              }
-              setShowModal(true);
-            }}>+ New</button>
-          </div>
-          <div style={styles.connList}>
-            {filterConns.length === 0 && <div style={styles.empty}>No saved connections</div>}
-            {filterConns.map(c => (
-              <div key={c.id} style={styles.connItem} onClick={() => openConnection(c)}>
-                <div style={styles.connInfo}>
-                  <div style={styles.connName}>{c.name}</div>
-                  <div style={styles.connDetail}>{c.type === 'ssh' && `${c.host}:${c.port}`}{c.type === 'powershell' && 'Local'}{c.type === 'serial' && `${c.serialPort} @ ${c.baudRate}`}{c.type === 'websocket' && c.url}</div>
-                </div>
-                <button style={styles.delBtn} onClick={(e) => { e.stopPropagation(); window.electronAPI?.deleteConnection(c.id).then(loadConnections); }}>×</button>
-              </div>
-            ))}
-          </div>
-        </div>
-        )}
-
-        <div style={styles.content}>
-          {connTabs.length > 0 && (
-            <div style={styles.connTabBar}>
-              {connTabs.map(tab => (
-                <button key={tab.id} style={activeConnTabId === tab.id ? {...styles.connTab, ...styles.connTabActive} : styles.connTab} onClick={() => setActiveConnTabId(tab.id)}>
-                  <span style={{color: tab.isConnected ? '#4ade80' : '#ef4444'}}>●</span>
-                  <span>{tab.conn.name}</span>
-                  <button style={styles.connTabClose} onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}>×</button>
-                </button>
-              ))}
+      {/* Main Content */}
+      <div style={styles.content}>
+        {/* Sidebar - only for connection tabs, hidden for android/ir */}
+        {activeTab !== 'settings' && !['android', 'ir'].includes(activeTab) && (
+          <div style={styles.sidebar}>
+            <div style={{ ...styles.sidebarHeader, padding: '0 16px' }}>
+              <span style={styles.sidebarTitle}>{activeTab.toUpperCase()}</span>
+              <button style={styles.buttonAdd} onClick={() => setShowModal(true)} title="New Connection"><Plus size={14} /></button>
             </div>
-          )}
 
-          {activeTabData ? (
-            <>
-              <div style={styles.panelHeader}>
-                <span>{activeTabData.conn.name}</span>
-                <button style={{...styles.btn, backgroundColor: activeTabData.isConnected ? '#ef4444' : '#3b82f6'}} onClick={activeTabData.isConnected ? handleDisconnect : handleConnect}>
-                  {activeTabData.isConnected ? 'Disconnect' : 'Connect'}
-                </button>
+            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 4, padding: '4px 8px' }}>
+                <Search size={14} style={{ color: theme.textTertiary }} />
+                <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: theme.text }} />
               </div>
-              
-              {activeTabData.isConnected && activeTabData.conn.type !== 'websocket' && (
-                <div style={styles.cmdButtons}>
-                  {commandButtons.map(btn => (
-                    <button key={btn.id} style={{backgroundColor: '#3d3d3d', border: 'none', borderRadius: 4, color: '#e5e5e5', padding: '4px 10px', fontSize: 12, cursor: 'pointer'}} onClick={() => handleButtonClick(btn)}>{btn.name}</button>
-                  ))}
-                  <button style={{backgroundColor: '#3b82f6', border: 'none', borderRadius: 4, color: '#fff', padding: '4px 10px', fontSize: 12, cursor: 'pointer'}} onClick={() => { setEditingButton(null); setButtonForm({name: '', commands: ''}); setShowCmdModal(true); }}>+ Add</button>
-                </div>
-              )}
-
-              {activeTabData.conn.type === 'websocket' ? (
-                /* ---- WebSocket Panel ---- */
-                <div style={{display:'flex',flexDirection:'column',height:'100%',backgroundColor:'#0d0d0d'}}>
-                  {/* Send Area */}
-                  <div style={{display:'flex',gap:8,padding:'8px 12px',backgroundColor:'#1e1e1e',borderBottom:'1px solid #333'}}>
-                    <textarea
-                      style={{flex:1,minHeight:60,maxHeight:120,backgroundColor:'#0d0d0d',border:'1px solid #404040',borderRadius:6,color:'#e5e5e5',fontFamily:'Consolas,monospace',fontSize:13,padding:'8px 10px',resize:'vertical',outline:'none'}}
-                      value={wsInput}
-                      onChange={e => setWsInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (wsInput.trim() && activeTabData?.isConnected) {
-                            window.electronAPI?.wsSend(activeTabData.connId, wsInput + '\n');
-                            setWsMessages(prev => ({...prev, [activeTabData.id]: [...(prev[activeTabData.id]||[]), '> ' + wsInput + '\n']}));
-                            setWsInput('');
-                          }
-                        }
-                      }}
-                      placeholder={activeTabData?.isConnected ? 'Type message, Enter to send...' : 'Connect to send...'}
-                      disabled={!activeTabData?.isConnected}
-                    />
-                    <button
-                      style={{backgroundColor:'#3b82f6',border:'none',borderRadius:6,color:'#fff',padding:'8px 16px',cursor:'pointer',fontSize:13,alignSelf:'flex-end'}}
-                      onClick={() => {
-                        if (wsInput.trim() && activeTabData?.isConnected) {
-                          window.electronAPI?.wsSend(activeTabData.connId, wsInput + '\n');
-                          setWsMessages(prev => ({...prev, [activeTabData.id]: [...(prev[activeTabData.id]||[]), '> ' + wsInput + '\n']}));
-                          setWsInput('');
-                        }
-                      }}
-                      disabled={!activeTabData?.isConnected || !wsInput.trim()}
-                    >Send</button>
-                  </div>
-                  {/* Receive Area */}
-                  <div ref={wsLogRef} style={{flex:1,overflow:'auto',backgroundColor:'#0d0d0d',padding:'8px 12px',fontFamily:'Consolas,monospace',fontSize:13,color:'#ccc',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
-                    {(wsMessages[activeTabData.id]||[]).map((msg,i) => (
-                      <div key={i} style={{color: msg.startsWith('>') ? '#4ade80' : msg.includes('[Error') ? '#ef4444' : msg.includes('[Connect') || msg.includes('[Disconn') ? '#60a5fa' : '#aaa'}}>{msg}</div>
-                    ))}
-                    {(!wsMessages[activeTabData.id] || wsMessages[activeTabData.id].length === 0) && (
-                      <div style={{color:'#555'}}>No messages yet. Connect to start.</div>
-                    )}
-                  </div>
+            </div>
+            <div style={styles.sidebarContent}>
+              {activeTabConns.length === 0 ? (
+                <div style={{ padding: '20px 16px', textAlign: 'center' as const }}>
+                  <div style={{ fontSize: 12, color: theme.textTertiary, marginBottom: 12 }}>{searchQuery ? 'No matches found' : 'No connections'}</div>
+                  <button style={{ ...styles.button, width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowModal(true)}><Plus size={14} style={{ verticalAlign: 'middle' }} /> Add Connection</button>
                 </div>
               ) : (
-                /* ---- Terminal for non-WebSocket types ---- */
-                <div style={styles.terminal} onContextMenu={handleTerminalContextMenu}>
-                  {connTabs.filter(t => t.conn.type !== 'websocket').map(tab => (
-                    <div key={tab.id} ref={el => { if (el && tab.containerRef) (tab.containerRef as any).current = el; }} style={{flex: 1, overflow: 'hidden', display: tab.id === activeConnTabId ? 'flex' : 'none', flexDirection: 'column'}} />
-                  ))}
-                  {contextMenu.visible && (
-                    <div style={{
-                      position: 'fixed',
-                      left: contextMenu.x,
-                      top: contextMenu.y,
-                      backgroundColor: '#2d2d2d',
-                      border: '1px solid #404040',
-                      borderRadius: 6,
-                      padding: '4px 0',
-                      zIndex: 1000,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    }}>
-                      <button
-                        onClick={handleCopySelection}
-                        style={{
-                          display: 'block',
-                          width: '100%',
-                          padding: '8px 16px',
-                          background: 'none',
-                          border: 'none',
-                          color: '#e5e5e5',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          fontSize: 13,
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#3d3d3d')}
-                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                      >
-                        📋 Copy
-                      </button>
+                <div role="list">
+                  {activeTabConns.map(conn => (
+                    <div role="listitem" key={conn.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', cursor: 'pointer', backgroundColor: 'transparent', transition: 'background-color 0.1s' }} onClick={() => openConnection(conn)}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: connTabs.some(t => t.conn.id === conn.id && t.isConnected) ? theme.success : theme.textTertiary, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: 13, color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{conn.name}</span>
+                      <button aria-label="Delete connection" onClick={e => { e.stopPropagation(); deleteConnection(conn.id); }} style={{ width: 20, height: 20, border: 'none', borderRadius: 4, backgroundColor: 'transparent', color: theme.textTertiary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12} style={{ verticalAlign: 'middle' }} /></button>
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
-            </>
-          ) : activeTab === 'settings' ? (
-            /* ---- Settings Panel ---- */
-            <div style={{flex: 1, overflow: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 24}}>
-              <div style={{fontSize: 20, fontWeight: 600, marginBottom: 8}}>⚙️ Settings</div>
-
-              {/* Control API Section */}
-              <div style={{backgroundColor: '#252525', borderRadius: 12, padding: 20, border: '1px solid #404040'}}>
-                <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16}}>
-                  <span style={{fontSize: 16, fontWeight: 600}}>🔌 Control API (TCP JSON)</span>
-                  <label style={{display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', cursor: 'pointer'}}>
-                    <input type="checkbox" checked={controlApiConfig.enabled} onChange={e => setControlApiConfig(c => ({...c, enabled: e.target.checked}))} />
-                    <span>Enabled</span>
-                  </label>
-                </div>
-                <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
-                  <div style={{flex: 1}}>
-                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Host</label>
-                    <input style={{...styles.input, width: '100%'}} value={controlApiConfig.host} onChange={e => setControlApiConfig(c => ({...c, host: e.target.value}))} />
-                  </div>
-                  <div style={{width: 120}}>
-                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Port</label>
-                    <input style={{...styles.input, width: '100%'}} type="number" value={controlApiConfig.port} onChange={e => setControlApiConfig(c => ({...c, port: parseInt(e.target.value) || 9380}))} />
-                  </div>
-                </div>
-                <div style={{fontSize: 12, color: '#666', marginBottom: 12}}>
-                  Endpoint: <code style={{backgroundColor: '#1e1e1e', padding: '2px 6px', borderRadius: 4}}>{controlApiConfig.host}:{controlApiConfig.port}</code>
-                </div>
-                <button
-                  style={{...styles.btn, backgroundColor: '#3b82f6', marginTop: 8}}
-                  onClick={async () => {
-                    if (window.electronAPI) {
-                      await window.electronAPI.controlApiSetConfig(controlApiConfig);
-                      setSettingsSaved(true);
-                      setTimeout(() => setSettingsSaved(false), 2000);
-                    }
-                  }}
-                >Save Control API</button>
-                {settingsSaved && <span style={{marginLeft: 12, color: '#4ade80'}}>✓ Saved</span>}
-              </div>
-
-              {/* MCP API Section */}
-              <div style={{backgroundColor: '#252525', borderRadius: 12, padding: 20, border: '1px solid #404040'}}>
-                <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16}}>
-                  <span style={{fontSize: 16, fontWeight: 600}}>🤖 MCP Server (HTTP+SSE)</span>
-                  <label style={{display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', cursor: 'pointer'}}>
-                    <input type="checkbox" checked={mcpApiConfig.enabled} onChange={e => setMcpApiConfig(c => ({...c, enabled: e.target.checked}))} />
-                    <span>Enabled</span>
-                  </label>
-                </div>
-                <div style={{display: 'flex', gap: 12, marginBottom: 12}}>
-                  <div style={{flex: 1}}>
-                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Host</label>
-                    <input style={{...styles.input, width: '100%'}} value={mcpApiConfig.host} onChange={e => setMcpApiConfig(c => ({...c, host: e.target.value}))} />
-                  </div>
-                  <div style={{width: 120}}>
-                    <label style={{display: 'block', fontSize: 12, color: '#888', marginBottom: 6}}>Port</label>
-                    <input style={{...styles.input, width: '100%'}} type="number" value={mcpApiConfig.port} onChange={e => setMcpApiConfig(c => ({...c, port: parseInt(e.target.value) || 9381}))} />
-                  </div>
-                </div>
-                <div style={{fontSize: 12, color: '#666', marginBottom: 12}}>
-                  Endpoint: <code style={{backgroundColor: '#1e1e1e', padding: '2px 6px', borderRadius: 4}}>{mcpApiConfig.host}:{mcpApiConfig.port}</code>
-                </div>
-                <button
-                  style={{...styles.btn, backgroundColor: '#3b82f6', marginTop: 8}}
-                  onClick={async () => {
-                    if (window.electronAPI) {
-                      await window.electronAPI.mcpApiSetConfig(mcpApiConfig);
-                      setSettingsSaved(true);
-                      setTimeout(() => setSettingsSaved(false), 2000);
-                    }
-                  }}
-                >Save MCP</button>
-                {settingsSaved && <span style={{marginLeft: 12, color: '#4ade80'}}>✓ Saved</span>}
-              </div>
-
-              {/* OpenClaw Integration */}
-              <div style={{backgroundColor: '#252525', borderRadius: 12, padding: 20, border: '1px solid #404040'}}>
-                <div style={{fontSize: 16, fontWeight: 600, marginBottom: 12}}>🔗 OpenClaw Integration</div>
-                <button
-                  style={{...styles.btn, backgroundColor: '#22c55e'}}
-                  onClick={() => {
-                    const config = {
-                      controlApi: { enabled: controlApiConfig.enabled, host: controlApiConfig.host, port: controlApiConfig.port },
-                      mcpApi: { enabled: mcpApiConfig.enabled, host: mcpApiConfig.host, port: mcpApiConfig.port }
-                    };
-                    navigator.clipboard.writeText(JSON.stringify(config, null, 2));
-                    setSettingsSaved(true);
-                    setTimeout(() => setSettingsSaved(false), 2000);
-                  }}
-                >📋 Copy OpenClaw Config</button>
-                <div style={{fontSize: 12, color: '#666', marginTop: 8}}>
-                  Copy this JSON config and paste it into your OpenClaw configuration to enable SeeleLink integration.
-                </div>
-              </div>
             </div>
-          ) : (
-            <div style={styles.noConn}><div style={{fontSize: 48, marginBottom: 16}}>📡</div><div style={{color: '#888'}}>Click a connection to open it</div></div>
+          </div>
+        )}
+
+        {/* Main Area */}
+        <div style={styles.mainArea}>
+          {/* Connection tab bar — always rendered to keep tab state */}
+          {connTabs.length > 0 && (
+            <div style={{ ...styles.tabBar, padding: '0 16px', minHeight: 40 }}>
+              {connTabs.map(tab => {
+                const isActive = activeConnTabId === tab.id;
+                return (
+                  <div
+                    key={tab.id}
+                    onClick={() => setActiveConnTabId(tab.id)}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = theme.bgHover; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '8px 16px', fontSize: 12,
+                      color: isActive ? theme.text : theme.textSecondary,
+                      borderBottom: isActive ? `2px solid ${theme.primary}` : '2px solid transparent',
+                      cursor: 'pointer', whiteSpace: 'nowrap', height: 40,
+                      backgroundColor: isActive ? theme.bg : 'transparent',
+                      transition: 'background-color 0.1s, color 0.1s',
+                    }}
+                  >
+                    <span>{tab.conn.name}</span>
+                    <span
+                      onClick={e => { e.stopPropagation(); closeTab(tab.id); }}
+                      style={{ width: 14, height: 14, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, flexShrink: 0 }}
+                    ><X size={12} style={{ verticalAlign: 'middle' }} /></span>
+                  </div>
+                );
+              })}
+            </div>
           )}
+
+          {/* TerminalPanel is ALWAYS mounted — hidden via display:none when viewing other tabs */}
+          <div style={{ ...styles.terminalContainer, display: ['android', 'ir', 'settings'].includes(activeTab) || (activeTab === 'websocket' && connTabs.length === 0) ? 'none' : undefined }}>
+            <TerminalPanel
+              connTabs={connTabs}
+              activeConnTabId={activeConnTabId}
+              onTerminalReady={(tabId, connId, connType) => {
+                // Kept for external notification; IPC routing is internal to TerminalPanel
+              }}
+            />
+          </div>
+
+          {/* Settings / Android / IR rendered in same space as terminal */}
+          {activeTab === 'settings' && renderSettings()}
+          {activeTab === 'android' && (
+            <AndroidPage
+              androidTabs={androidTabs}
+              setAndroidTabs={setAndroidTabs}
+              androidActiveTab={androidActiveTab}
+              setAndroidActiveTab={setAndroidActiveTab}
+            />
+          )}
+          {activeTab === 'ir' && (
+            <IRPage irData={irData} onIrDataChange={(data) => {
+              setIrData(data);
+              window.electronAPI?.irSave(data);
+            }} />
+          )}
+          {activeTab === 'websocket' && connTabs.length === 0 && renderProtocolPage('websocket')}
+          {!['settings', 'android', 'ir'].includes(activeTab) && !(activeTab === 'websocket' && connTabs.length === 0) && connTabs.length === 0 && renderEmptyContent()}
         </div>
       </div>
 
+      {/* Status Bar */}
+      <div style={{ ...styles.statusBar, padding: '0 16px' }}>
+        <span style={styles.statusItem}>{currentTime}</span>
+        <span>•</span>
+        <span style={styles.statusItem}>UTF-8</span>
+        <span>•</span>
+        <span style={styles.statusItem}>{activeTab.toUpperCase()}</span>
+        <span>•</span>
+        <span style={{ ...styles.statusItem, color: connTabs.length > 0 ? theme.success : theme.textTertiary }}>● {connTabs.length > 0 ? 'Connected' : 'Disconnected'}</span>
+        <div style={{ flex: 1 }} />
+        <span style={styles.statusItem}>{themeName}</span>
+        <span>•</span>
+        <span style={styles.statusItem}>{zoom}%</span>
+        <span>•</span>
+        <span style={styles.statusItem}>{connTabs.length} tabs</span>
+        <span>•</span>
+        <span style={styles.statusItem}>{savedConns.length} connections</span>
+      </div>
+
+      {/* Modal */}
       {showModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowModal(false)}>
-          <div style={styles.modal} onClick={e => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <span>New {activeTab.toUpperCase()} Connection</span>
-              <button style={styles.modalClose} onClick={() => setShowModal(false)}>×</button>
-            </div>
-            <div style={styles.modalBody}>
-              <div style={styles.formGroup}><label style={styles.label}>Name</label><input style={styles.input} value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="My Server" /></div>
-              {activeTab === 'ssh' && (
-                <>
-                  <div style={styles.formRow}>
-                    <div style={styles.formGroup}><label style={styles.label}>Host *</label><input style={styles.input} value={form.host} onChange={e => setForm({...form, host: e.target.value})} placeholder="10.18.224.177" /></div>
-                    <div style={{...styles.formGroup, width: 80}}><label style={styles.label}>Port</label><input style={styles.input} value={form.port} onChange={e => setForm({...form, port: e.target.value})} /></div>
-                  </div>
-                  <div style={styles.formGroup}><label style={styles.label}>Username *</label><input style={styles.input} value={form.username} onChange={e => setForm({...form, username: e.target.value})} /></div>
-                  <div style={styles.formGroup}><label style={styles.label}>Password</label><input style={styles.input} type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} /></div>
-                </>
-              )}
-              {activeTab === 'serial' && (
-                <>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Port</label>
-                    <select style={styles.input} value={form.serialPort} onChange={e => setForm({...form, serialPort: e.target.value})}>
-                      <option value="">Select COM port...</option>
-                      {availableComPorts.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div style={styles.formGroup}><label style={styles.label}>Baud Rate</label>
-                    <select style={styles.input} value={form.baudRate} onChange={e => setForm({...form, baudRate: e.target.value})}>
-                      <option value="9600">9600</option><option value="115200">115200</option><option value="57600">57600</option><option value="38400">38400</option><option value="256000">256000</option>
-                    </select>
-                  </div>
-                </>
-              )}
-              {activeTab === 'websocket' && <div style={styles.formGroup}><label style={styles.label}>URL</label><input style={styles.input} value={form.url} onChange={e => setForm({...form, url: e.target.value})} placeholder="ws://localhost:8080" /></div>}
-            </div>
-            <div style={styles.modalFooter}>
-              <button style={{...styles.btn, backgroundColor: '#666'}} onClick={() => setShowModal(false)}>Cancel</button>
-              <button style={{...styles.btn, backgroundColor: '#22c55e'}} onClick={handleSaveConn}>Save</button>
-            </div>
-          </div>
-        </div>
+        <NewConnectionModal
+          activeTab={activeTab}
+          form={form}
+          setForm={setForm}
+          availableComPorts={availableComPorts}
+          setAvailableComPorts={setAvailableComPorts}
+          onSave={async (conn) => {
+            await window.electronAPI?.saveConnection(conn);
+            setSavedConns(prev => [...prev, conn]);
+            setShowModal(false);
+            setForm({ name: '', host: '', port: '22', username: '', password: '', serialPort: '', baudRate: '115200', url: 'ws://localhost:8080' });
+          }}
+          onClose={() => setShowModal(false)}
+        />
       )}
+    </div>
+  );
+}
 
-      {showCmdModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowCmdModal(false)}>
-          <div style={styles.modal} onClick={e => e.stopPropagation()}>
-            <div style={styles.modalHeader}><span>Quick Command</span><button style={styles.modalClose} onClick={() => setShowCmdModal(false)}>×</button></div>
-            <div style={styles.modalBody}>
-              <div style={styles.formGroup}><label style={styles.label}>Button Name</label><input style={styles.input} value={buttonForm.name} onChange={e => setButtonForm({...buttonForm, name: e.target.value})} placeholder="ls" /></div>
-              <div style={styles.formGroup}><label style={styles.label}>Commands (one per line)</label><textarea style={{...styles.input, height: 120, resize: 'vertical'}} value={buttonForm.commands} onChange={e => setButtonForm({...buttonForm, commands: e.target.value})} placeholder={"cd /data\nls -la"} /></div>
-            </div>
-            <div style={styles.modalFooter}>
-              <button style={{...styles.btn, backgroundColor: '#666'}} onClick={() => setShowCmdModal(false)}>Cancel</button>
-              <button style={{...styles.btn, backgroundColor: '#22c55e'}} onClick={handleSaveCommand}>{editingButton ? 'Update' : 'Save'}</button>
-            </div>
-          </div>
+// ============================================================
+// Session Log Settings Component
+// ============================================================
+function SessionLogSettings() {
+  const { theme, styles } = useTheme();
+  const [enabled, setEnabled] = React.useState(true);
+  const [logPath, setLogPath] = React.useState('');
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    window.electronAPI?.logGetConfig().then(cfg => {
+      if (cfg) {
+        setEnabled(cfg.enabled !== false);
+        setLogPath(cfg.path || '');
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const save = React.useCallback((patch: { enabled?: boolean; path?: string }) => {
+    const next = { enabled, path: logPath, ...patch };
+    setEnabled(next.enabled);
+    if (next.path !== undefined) setLogPath(next.path);
+    window.electronAPI?.logSetConfig({ enabled: next.enabled, path: next.path || null });
+  }, [enabled, logPath]);
+
+  const handleBrowse = async () => {
+    const dir = await window.electronAPI?.dialogOpenDirectory();
+    if (dir) save({ path: dir });
+  };
+
+  return (
+    <div style={{ padding: '12px 0', borderBottom: `1px solid ${theme.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: theme.text }}>Session Logs</div>
+          <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>Record session output to log files</div>
         </div>
-      )}
-
-      <div style={styles.status}>
-        <span>UTF-8</span><span>•</span><span>{activeTab.toUpperCase()}</span><span>•</span>
-        <span style={{color: activeTabData?.isConnected ? '#4ade80' : '#ef4444'}}>● {activeTabData?.isConnected ? 'Connected' : 'Disconnected'}</span>
-        <span>•</span><span>{connTabs.length} tabs</span>
+        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={e => save({ enabled: e.target.checked })}
+            style={{ marginRight: 8, width: 16, height: 16 }}
+          />
+          <span style={{ fontSize: 12 }}>Enabled</span>
+        </label>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 11, color: theme.textSecondary }}>Log Path:</span>
+        <input
+          type="text"
+          value={logPath}
+          onChange={e => save({ path: e.target.value })}
+          placeholder="默认: ~/.seelelink/logs"
+          style={{ flex: 1, padding: '6px 10px', fontSize: 12, backgroundColor: theme.bg, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 4, outline: 'none' }}
+        />
+        <button onClick={handleBrowse} style={{ ...styles.button, height: 28 }}>Browse</button>
+        <button
+          onClick={() => window.electronAPI?.logOpenFolder(null)}
+          style={{ ...styles.button, height: 28 }}
+          title="打开日志目录"
+        >📂</button>
       </div>
     </div>
   );
 }
+
+// ============================================================
+// Sub Components
+// ============================================================
+
+function MenuButton({ label, shortcut, icon, onClick }: { label: string; shortcut?: string; icon?: React.ReactNode; onClick?: () => void }) {
+  const { theme } = useTheme();
+  return (
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 12px', textAlign: 'left' as const, background: 'none', border: 'none', color: theme.text, fontSize: 13, borderRadius: 4, cursor: 'pointer' }}
+      onMouseEnter={e => (e.currentTarget.style.backgroundColor = theme.bgHover)}
+      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{icon}<span>{label}</span></span>
+      {shortcut && <span style={{ color: theme.textTertiary, fontSize: 11 }}>{shortcut}</span>}
+    </button>
+  );
+}
+
+
+function NewConnectionModal({ activeTab, form, setForm, availableComPorts, setAvailableComPorts, onSave, onClose }: {
+  activeTab: TabType; form: SavedConn; setForm: React.Dispatch<React.SetStateAction<SavedConn | null>>; availableComPorts: ComPortInfo[]; setAvailableComPorts: (ports: ComPortInfo[]) => void; onSave: (conn: SavedConn) => void; onClose: () => void;
+}) {
+  const { theme, styles } = useTheme();
+  const [localForm, setLocalForm] = useState(form);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshPorts = useCallback(() => {
+    if (activeTab !== 'serial') return;
+    setRefreshing(true);
+    window.electronAPI?.serialList().then(ports => {
+      setAvailableComPorts(ports);
+    }).catch(console.error).finally(() => setRefreshing(false));
+  }, [activeTab, setAvailableComPorts]);
+
+  useEffect(() => {
+    if (activeTab === 'serial') {
+      refreshPorts();
+    }
+    setLocalForm(form);
+  }, [activeTab, form, refreshPorts]);
+
+  const handleSave = () => {
+    const conn: SavedConn = {
+      id: `conn-${Date.now()}`, name: localForm.name || `${localForm.host || localForm.serialPort || localForm.url}`,
+      type: activeTab, host: localForm.host, port: localForm.port, username: localForm.username, password: localForm.password,
+      serialPort: localForm.serialPort, baudRate: localForm.baudRate, url: localForm.url,
+    };
+    onSave(conn);
+  };
+
+  return (
+    <div style={styles.modal} onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+        <h2 id="modal-title" style={styles.modalTitle}>New Connection</h2>
+
+        <SimpleInput label="Name" icon={<Activity size={11} />} value={localForm.name} onChange={v => setLocalForm({ ...localForm, name: v })} placeholder="My Server" />
+
+        {(activeTab === 'ssh' || activeTab === 'websocket') && (
+          <>
+            <SimpleInput label="Host" icon={<Globe size={11} />} value={localForm.host} onChange={v => setLocalForm({ ...localForm, host: v })} placeholder="192.168.1.100" />
+            {activeTab === 'ssh' && <>
+              <SimpleInput label="Port" icon={<Hash size={11} />} value={localForm.port} onChange={v => setLocalForm({ ...localForm, port: v })} placeholder="22" />
+              <SimpleInput label="Username" icon={<Monitor size={11} />} value={localForm.username} onChange={v => setLocalForm({ ...localForm, username: v })} />
+              <SimpleInput label="Password" icon={<Command size={11} />} type="password" value={localForm.password} onChange={v => setLocalForm({ ...localForm, password: v })} />
+            </>}
+            {activeTab === 'websocket' && <SimpleInput label="URL" icon={<Globe size={11} />} value={localForm.url} onChange={v => setLocalForm({ ...localForm, url: v })} placeholder="ws://localhost:8080" />}
+          </>
+        )}
+
+        {activeTab === 'serial' && (
+          <>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 500, color: theme.textSecondary, display: 'flex', alignItems: 'center', gap: 6 }}><Cable size={11} style={{ opacity: 0.7, verticalAlign: 'middle' }} /> Port</div>
+                <button
+                  type="button"
+                  title="Refresh ports"
+                  onClick={refreshPorts}
+                  disabled={refreshing}
+                  style={{ width: 26, height: 26, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 4, color: refreshing ? theme.textTertiary : theme.textSecondary }}
+                >
+                  <RefreshCw size={13} style={refreshing ? { animation: 'spin 1s linear infinite', verticalAlign: 'middle' } : { verticalAlign: 'middle' }} />
+                </button>
+              </div>
+              <select
+                id="serial-port-select"
+                title="COM Port"
+                value={localForm.serialPort}
+                onChange={e => setLocalForm({ ...localForm, serialPort: e.target.value })}
+                style={styles.select}
+              >
+                <option value="">Select...</option>
+                {availableComPorts.map(port => (
+                  <option key={port.path} value={port.path}>
+                    {port.path}{port.manufacturer ? ` (${port.manufacturer})` : ''}
+                    {port.serialNumber ? ` #${port.serialNumber}` : ''}
+                  </option>
+                ))}
+              </select>
+              {availableComPorts.length === 0 && (
+                <div style={{ fontSize: 10, color: theme.textTertiary, marginTop: 4 }}>No COM ports found</div>
+              )}
+            </div>
+            <SimpleInput label="Baud Rate" icon={<Hash size={11} />} value={localForm.baudRate} onChange={v => setLocalForm({ ...localForm, baudRate: v })} placeholder="115200" />
+          </>
+        )}
+
+        <div style={styles.modalFooter}>
+          <button type="button" style={styles.buttonSecondary} onClick={onClose}>Cancel</button>
+          <button type="button" style={styles.buttonPrimary} onClick={handleSave}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SimpleInput({ label, value, onChange, placeholder, type = 'text', icon }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; icon?: React.ReactNode;
+}) {
+  const { theme, styles } = useTheme();
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 500, color: theme.textSecondary, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>{icon && <span style={{ opacity: 0.7 }}>{icon}</span>}{label}</div>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={styles.input} />
+    </div>
+  );
+}
+
+function SimpleSelect({ label, value, onChange, options, icon }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[]; icon?: React.ReactNode;
+}) {
+  const { theme, styles } = useTheme();
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 500, color: theme.textSecondary, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>{icon && <span style={{ opacity: 0.7 }}>{icon}</span>}{label}</div>
+      <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} style={styles.select}>
+        <option value="">Select...</option>
+        {options.map(port => <option key={port} value={port}>{port}</option>)}
+      </select>
+    </div>
+  );
+}
+

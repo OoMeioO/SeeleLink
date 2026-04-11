@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Terminal</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0d0d0d; }
+    #terminal { width: 100%; height: 100%; }
+    .xterm { height: 100%; }
+    .xterm-viewport { overflow-y: auto !important; }
+  </style>
+</head>
+<body>
+  <div id="terminal"></div>
+  <script>
+    // Terminal page - runs in iframe, completely isolated from parent
+    // This version loads xterm.js from the parent window's module
+    (function() {
+      let term = null;
+      let fitAddon = null;
+      let currentTabId = null;
+      let currentConnId = null;
+      let initAttempts = 0;
+
+      function log(msg) {
+        console.log('[Terminal-' + currentTabId + '] ' + msg);
+        try { parent.postMessage({ type: 'terminal:log', tabId: currentTabId, msg: msg }, '*'); } catch(e) {}
+      }
+
+      function initTerminal() {
+        initAttempts++;
+        log('initTerminal attempt ' + initAttempts + ', Terminal: ' + typeof Terminal + ', FitAddon: ' + typeof FitAddon);
+        
+        if (typeof Terminal === 'undefined') {
+          log('Terminal not defined, waiting...');
+          // Try to get from parent window
+          if (window.parent && window.parent.Terminal) {
+            window.Terminal = window.parent.Terminal;
+            window.FitAddon = window.parent.FitAddon;
+            log('Got Terminal from parent');
+          } else {
+            setTimeout(initTerminal, 100);
+            return;
+          }
+        }
+        
+        if (typeof Terminal === 'undefined' || typeof FitAddon === 'undefined') {
+          log('Still waiting for xterm.js...');
+          setTimeout(initTerminal, 100);
+          return;
+        }
+
+        log('Initializing terminal...');
+        
+        try {
+          term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Consolas, monospace',
+            theme: { background: '#0d0d0d', foreground: '#d4d4d4' },
+            allowTransparency: false,
+            cursorStyle: 'block',
+            cursorInactiveStyle: 'blink',
+            bellStyle: 'none',
+            enableBold: true,
+            drawBoldTextInBrightColors: true,
+            convertEol: true,
+            windowsMode: true,
+          });
+
+          fitAddon = new FitAddon();
+          term.loadAddon(fitAddon);
+          
+          const terminalEl = document.getElementById('terminal');
+          log('Terminal element: ' + (terminalEl ? 'found' : 'not found'));
+          
+          term.open(terminalEl);
+          log('Terminal opened');
+          
+          // Initial fit
+          setTimeout(() => {
+            try {
+              fitAddon.fit();
+              log('Fitted, cols: ' + term.cols + ', rows: ' + term.rows);
+            } catch(e) {
+              log('Fit error: ' + e.message);
+            }
+          }, 50);
+
+          // Handle user input
+          term.onData((data) => {
+            // Filter focus sequences
+            if (data === '\u001b[O' || data === '\u001b[I') {
+              log('Filtered focus sequence');
+              return;
+            }
+            
+            parent.postMessage({
+              type: 'terminal:input',
+              tabId: currentTabId,
+              connId: currentConnId,
+              data: data
+            }, '*');
+          });
+
+          // Handle resize
+          const ro = new ResizeObserver(() => {
+            try {
+              fitAddon.fit();
+            } catch (e) {
+              log('ResizeObserver fit error: ' + e.message);
+            }
+          });
+          ro.observe(document.body);
+
+          log('Terminal ready, notifying parent');
+          parent.postMessage({
+            type: 'terminal:ready',
+            tabId: currentTabId
+          }, '*');
+          
+        } catch (e) {
+          log('Init error: ' + e.message);
+        }
+      }
+
+      // Receive messages from parent
+      window.addEventListener('message', (event) => {
+        const msg = event.data;
+        
+        if (!msg || typeof msg.type !== 'string') return;
+        
+        switch (msg.type) {
+          case 'terminal:init':
+            currentTabId = msg.tabId;
+            currentTabType = msg.tabType;
+            currentConnId = msg.connId;
+            log('Received init, loading xterm.js...');
+            
+            // Create script elements to load xterm.js
+            const baseUrl = msg.baseUrl || '';
+            
+            // Load xterm.js
+            const xtermScript = document.createElement('script');
+            xtermScript.src = baseUrl + './assets/xterm.js';
+            xtermScript.onload = () => {
+              log('xterm.js loaded');
+              // Load fit addon
+              const fitScript = document.createElement('script');
+              fitScript.src = baseUrl + './assets/addon-fit.js';
+              fitScript.onload = () => {
+                log('addon-fit.js loaded');
+                // Load CSS
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = baseUrl + './assets/xterm.css';
+                document.head.appendChild(link);
+                // Init terminal
+                initTerminal();
+              };
+              fitScript.onerror = (e) => log('addon-fit.js load error: ' + JSON.stringify(e));
+              document.head.appendChild(fitScript);
+            };
+            xtermScript.onerror = (e) => {
+              log('xterm.js load error: ' + JSON.stringify(e));
+              // Fallback: try loading from CDN
+              log('Trying CDN fallback...');
+              const cdnScript = document.createElement('script');
+              cdnScript.src = 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js';
+              cdnScript.onload = () => {
+                const cdnFit = document.createElement('script');
+                cdnFit.src = 'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0/lib/addon-fit.min.js';
+                cdnFit.onload = () => {
+                  const cdnCss = document.createElement('link');
+                  cdnCss.rel = 'stylesheet';
+                  cdnCss.href = 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css';
+                  document.head.appendChild(cdnCss);
+                  initTerminal();
+                };
+                document.head.appendChild(cdnFit);
+              };
+              document.head.appendChild(cdnScript);
+            };
+            document.head.appendChild(xtermScript);
+            break;
+            
+          case 'terminal:resize':
+            log('Resize request');
+            if (fitAddon) {
+              try { fitAddon.fit(); } catch (e) { log('Resize error: ' + e.message); }
+            }
+            break;
+            
+          case 'terminal:write':
+            if (term) {
+              term.write(msg.data);
+            }
+            break;
+            
+          case 'terminal:clear':
+            if (term) {
+              term.clear();
+            }
+            break;
+            
+          case 'terminal:focus':
+            if (term) {
+              term.focus();
+            }
+            break;
+            
+          case 'terminal:dispose':
+            if (term) {
+              term.dispose();
+              term = null;
+            }
+            break;
+        }
+      });
+
+      // Notify parent that script loaded
+      parent.postMessage({ type: 'terminal:loaded' }, '*');
+    })();
+  </script>
+</body>
+</html>
