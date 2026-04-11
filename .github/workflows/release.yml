@@ -97,7 +97,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SeeleLink-macos
-          path: release/mac/
+          path: release/mac-arm64/
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────
