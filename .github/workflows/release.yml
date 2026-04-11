@@ -176,25 +176,8 @@ jobs:
           echo $! > /tmp/electron.pid
           echo "Electron PID: $(cat /tmp/electron.pid)"
 
-      - name: Wait for services (60s total)
-        run: |
-          for i in {1..30}; do
-            if curl -sf http://127.0.0.1:9380 > /dev/null 2>&1 && \
-               curl -sf http://127.0.0.1:9381/health > /dev/null 2>&1; then
-              echo "Services ready after ${i} attempts"
-              exit 0
-            fi
-            echo "Attempt $i: services not ready yet..."
-            sleep 2
-          done
-          echo "=== Port 9380 ==="
-          curl -v http://127.0.0.1:9380 || true
-          echo "=== Port 9381 ==="
-          curl -v http://127.0.0.1:9381/health || true
-          echo "=== Electron logs ==="
-          ls -la ~/.seelelink/ || true
-          cat ~/.seelelink/electron.log 2>/dev/null | tail -20 || true
-          exit 1
+      - name: Wait for services (TCP check for 9380, HTTP check for 9381)
+        run: node tests/integration/wait-for-services.cjs
 
       - name: Run integration tests
         run: node tests/integration/feature-coverage.test.cjs

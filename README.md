@@ -101,4 +101,4 @@ OpenClaw 配置（`~/.openclaw/config.json`）：
 
 ## License
 
-MIT
+Mozilla Public License Version 2.0
