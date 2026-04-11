@@ -1,6 +1,4 @@
-# SeeleLink Documentation
-
-This section provides the complete English documentation index for SeeleLink.
+# SeeleLink Documentation (English)
 
 ## Documentation Index
 
@@ -8,7 +6,7 @@ This section provides the complete English documentation index for SeeleLink.
 docs/
 ├── README.md              # Documentation index (Chinese)
 ├── README_EN.md          # Documentation index (English)
-├── index.md              # Chinese Documentation Directory
+├── index.md              # 中文文档目录
 ├── index-en.md           # English Documentation Directory
 ├── architecture.md        # Architecture Overview (Chinese)
 ├── architecture-en.md     # Architecture Overview (English)
@@ -35,16 +33,15 @@ docs/
 
 | Document | Description |
 |----------|-------------|
-| [index-en.md](index-en.md) | English documentation directory |
-| [architecture-en.md](architecture-en.md) | Architecture overview |
-| [modules-en.md](modules-en.md) | Modules details |
-| [api-reference-en.md](api-reference-en.md) | Full API coverage matrix |
-| [control-api-en.md](control-api-en.md) | Control API reference (72 commands) |
-| [mcp-en.md](mcp-en.md) | MCP Server reference (89 tools) |
-| [openclaw-en.md](openclaw-en.md) | OpenClaw integration |
-| [TERMINAL-en.md](TERMINAL-en.md) | Terminal system design |
-| [IPC-en.md](IPC-en.md) | IPC channel registry |
-| [DEVELOPMENT-en.md](DEVELOPMENT-en.md) | Development guide |
+| [architecture-en.md](architecture-en.md) | Architecture overview (English) |
+| [modules-en.md](modules-en.md) | Modules details (English) |
+| [api-reference-en.md](api-reference-en.md) | Full API coverage matrix (English) |
+| [control-api-en.md](control-api-en.md) | Control API reference (72 commands, English) |
+| [mcp-en.md](mcp-en.md) | MCP Server reference (89 tools, English) |
+| [openclaw-en.md](openclaw-en.md) | OpenClaw integration (English) |
+| [TERMINAL-en.md](TERMINAL-en.md) | Terminal system design (English) |
+| [IPC-en.md](IPC-en.md) | IPC channel registry (English) |
+| [DEVELOPMENT-en.md](DEVELOPMENT-en.md) | Development guide (English) |
 
 ## Core Service Ports
 

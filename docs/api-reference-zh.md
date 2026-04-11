@@ -1,51 +1,51 @@
-# SeeleLink API Reference
+# SeeleLink API 参考
 
-> **Last updated:** 2026-04-11
-> **Three layers:** MCP (HTTP+SSE/9381) | Control API (TCP JSON/9380) | IPC (Electron/internal)
+> **更新时间：** 2026-04-11
+> **三层架构：** MCP (HTTP+SSE/9381) | Control API (TCP JSON/9380) | IPC (Electron/内部)
 
 ---
 
-## Transport Overview
+## 传输层概述
 
-| Layer | Protocol | Default Port | Implementation |
+| 层 | 协议 | 默认端口 | 实现 |
 |-------|----------|-------------|----------------|
 | **MCP** | HTTP + SSE + POST (JSON-RPC 2.0) | 9381 | `electron/main.cjs` |
-| **Control API** | TCP JSON (newline-delimited) | 9380 | `electron/main.cjs` |
-| **IPC** | Electron `ipcMain`/`ipcRenderer` | internal | `electron/main.cjs` + `controlHandlers.cjs` |
+| **Control API** | TCP JSON（换行分隔）| 9380 | `electron/main.cjs` |
+| **IPC** | Electron `ipcMain`/`ipcRenderer` | 内部 | `electron/main.cjs` + `controlHandlers.cjs` |
 
-**Full feature list:**
-- **Control API:** 72 commands (see [control-api.md](control-api.md))
-- **MCP:** 89 tools (see [mcp.md](mcp.md))
-
----
-
-## Feature Coverage Matrix
-
-### Status Legend
-
-- ✅ **Complete** — implemented on this layer
-- ❌ **Not available** — not available on this layer
+**功能列表：**
+- **Control API：** 72 个命令（见 [control-api-zh.md](control-api-zh.md)）
+- **MCP：** 89 个工具（见 [mcp-zh.md](mcp-zh.md)）
 
 ---
 
-### 1. Session / Connection Management
+## 功能覆盖矩阵
 
-| Feature | MCP | Control API | IPC |
+### 状态说明
+
+- ✅ **完整** — 在此层已实现
+- ❌ **不可用** — 此层不可用
+
+---
+
+### 1. 会话 / 连接管理
+
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `list_connections` / `list` | ✅ | ✅ | ❌ |
 | `ps_connect` | ✅ | ❌ | ✅ |
-| `ps_execute` | ✅ | ✅ (`ps:execute`) | ✅ |
+| `ps_execute` | ✅ | ✅（`ps:execute`）| ✅ |
 | `ps_disconnect` | ✅ | ❌ | ✅ |
 | `cmd_connect` | ✅ | ❌ | ✅ |
-| `cmd_execute` | ✅ | ✅ (`cmd:execute`) | ✅ |
+| `cmd_execute` | ✅ | ✅（`cmd:execute`）| ✅ |
 | `cmd_disconnect` | ✅ | ❌ | ✅ |
 | `cmd:ready` | ❌ | ✅ | ✅ |
 | `ssh_connect` | ✅ | ❌ | ✅ |
-| `ssh_execute` | ✅ | ✅ (`ssh:execute`) | ✅ |
+| `ssh_execute` | ✅ | ✅（`ssh:execute`）| ✅ |
 | `ssh_disconnect` | ✅ | ❌ | ✅ |
-| `serial_list` | ✅ | ✅ (`serial:list`) | ✅ |
+| `serial_list` | ✅ | ✅（`serial:list`）| ✅ |
 | `serial_connect` | ✅ | ❌ | ✅ |
-| `serial_execute` | ✅ | ✅ (`serial:execute`) | ✅ |
+| `serial_execute` | ✅ | ✅（`serial:execute`）| ✅ |
 | `serial_disconnect` | ✅ | ❌ | ✅ |
 | `ws_connect` | ✅ | ❌ | ✅ |
 | `ws_send` | ✅ | ❌ | ✅ |
@@ -53,9 +53,9 @@
 
 ---
 
-### 2. Mouse Control (absolute screen coordinates)
+### 2. 鼠标控制（绝对屏幕坐标）
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `control_mouse_position` / `control:mouse:position` | ✅ | ✅ | ✅ |
 | `control_mouse_move` / `control:mouse:move` | ✅ | ✅ | ✅ |
@@ -65,9 +65,9 @@
 
 ---
 
-### 3. Keyboard Control (absolute screen coordinates)
+### 3. 键盘控制（绝对屏幕坐标）
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `control_keyboard_type` / `control:keyboard:type` | ✅ | ✅ | ✅ |
 | `control_keyboard_press` / `control:keyboard:press` | ✅ | ✅ | ✅ |
@@ -79,9 +79,9 @@
 
 ---
 
-### 4. Screen Capture (full system screen)
+### 4. 屏幕截图（完整系统屏幕）
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `control_screen_capture` / `control:screen:capture` | ✅ | ✅ | ✅ |
 | `control_screen_capture_region` / `control:screen:captureRegion` | ✅ | ✅ | ✅ |
@@ -92,9 +92,9 @@
 
 ---
 
-### 5. Debug Log
+### 5. 调试日志
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `control_debug_get_logs` / `control:debug:getLogs` | ✅ | ✅ | ✅ |
 | `control_debug_get_stats` / `control:debug:getStats` | ✅ | ✅ | ✅ |
@@ -104,9 +104,9 @@
 
 ---
 
-### 6. Window Control (SeeleLink app)
+### 6. 窗口控制（SeeleLink 应用）
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `window_minimize` / `window:minimize` | ✅ | ✅ | ✅ |
 | `window_maximize` / `window:maximize` | ✅ | ✅ | ✅ |
@@ -126,9 +126,9 @@
 
 ---
 
-### 7. App State (renderer process)
+### 7. 应用状态（渲染进程）
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `app_get_state` / `app:getState` | ✅ | ✅ | ❌ |
 | `app_get_info` / `app:getInfo` | ✅ | ✅ | ✅ |
@@ -146,7 +146,7 @@
 
 ### 8. Android
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `android_devices` / `android:devices` | ✅ | ✅ | ✅ |
 | `android_scan_network` / `android:scanNetwork` | ✅ | ✅ | ✅ |
@@ -157,9 +157,9 @@
 
 ---
 
-### 9. Plugin
+### 9. 插件
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `plugin_list` / `plugin:list` | ✅ | ✅ | ✅ |
 | `plugin_get` / `plugin:get` | ✅ | ✅ | ✅ |
@@ -171,9 +171,9 @@
 
 ---
 
-### 10. Config / Settings
+### 10. 配置 / 设置
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `control_api_get_config` / `controlApi:getConfig` | ✅ | ✅ | ✅ |
 | `control_api_set_config` / `controlApi:setConfig` | ✅ | ✅ | ✅ |
@@ -188,18 +188,18 @@
 
 ---
 
-### 11. IR (Infrared)
+### 11. IR（红外）
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `ir:load` | ✅ | ✅ | ✅ |
 | `ir:save` | ✅ | ✅ | ✅ |
 
 ---
 
-### 12. Session / System
+### 12. 会话 / 系统
 
-| Feature | MCP | Control API | IPC |
+| 功能 | MCP | Control API | IPC |
 |---------|-----|-------------|-----|
 | `ping` | ❌ | ✅ | ❌ |
 | `health` | ❌ | ✅ | ❌ |
@@ -210,9 +210,9 @@
 
 ---
 
-## Naming Convention
+## 命名约定
 
-MCP uses `snake_case`, Control API uses `colon:separated:names`:
+MCP 使用 `snake_case`，Control API 使用 `冒号:分隔:名称`：
 
 | Control API | MCP |
 |------------|-----|
@@ -228,17 +228,17 @@ MCP uses `snake_case`, Control API uses `colon:separated:names`:
 
 ---
 
-## Test Coverage
+## 测试覆盖
 
-Full integration tests: `tests/integration/feature-coverage.test.cjs`
+完整集成测试：`tests/integration/feature-coverage.test.cjs`
 
-**Results: 115 passed, 0 failed, 3 skipped**
+**结果：115 passed，0 failed，3 skipped**
 
-To run:
+运行方式：
 ```bash
-# Start the app first
+# 先启动应用
 npm run electron:dev
 
-# In another terminal
+# 在另一个终端
 node tests/integration/feature-coverage.test.cjs
 ```

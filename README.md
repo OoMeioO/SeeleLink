@@ -4,34 +4,20 @@
 
 ---
 
-## Features
+## 核心优势
 
-**One tool, every protocol.** No more juggling multiple terminal apps.
+**一个工具，全部协议。** 无需在多个终端应用之间切换。
 
-| Category | What you get |
-|----------|-------------|
-| **Multi-Protocol** | SSH · Serial · PowerShell · Bash · WebSocket · Android ADB · IR |
-| **External Control** | Control API (72 commands, TCP `:9380`) · MCP Server (89 tools, HTTP `:9381`) |
-| **UI Automation** | Mouse, keyboard, screenshot, drag — absolute coordinate control |
-| **AI Integration** | Native MCP/JSON-RPC 2.0 endpoint, OpenClaw-ready |
-| **Security** | AES-256-GCM encrypted passwords, shell injection protection |
-| **Session Logging** | ANSI-stripped logs for SSH/Serial/PS/Bash/WS with buffered writes |
-| **Plugin System** | Isolated subprocess plugins at `~/.seelelink/plugins/` |
-| **UI** | React + TypeScript, frameless window, dark/light themes, VSCode-style layout |
-
----
-
-## 功能
-
-| 类别 | 支持 |
+| 类别 | 功能 |
 |------|------|
-| **终端协议** | SSH、Serial、PowerShell、Bash、WebSocket |
-| **设备控制** | Android ADB（WiFi/USB）、IR 红外 |
-| **外部控制** | Control API（TCP `:9380`）、MCP Server（HTTP `:9381`） |
-| **窗口自动化** | 鼠标、键盘、截图、拖拽 — 支持绝对坐标操作 |
-| **UI** | React + TypeScript、无边框窗口、深浅主题、VSCode 风格 |
+| **多协议** | SSH · Serial · PowerShell · Bash · WebSocket · Android ADB · IR |
+| **外部控制** | Control API（72 命令，TCP `:9380`）· MCP Server（89 工具，HTTP `:9381`）|
+| **窗口自动化** | 鼠标、键盘、截图、拖拽 — 绝对坐标控制 |
+| **AI 集成** | 原生 MCP/JSON-RPC 2.0 端点，OpenClaw 开箱即用 |
+| **会话日志** | SSH/Serial/PS/Bash/WS 自动日志，ANSI 脱色，缓冲写入 |
 | **安全** | 密码 AES-256-GCM 加密、Shell 注入防护、坐标范围校验 |
-| **插件** | 子进程隔离架构（`~/.seelelink/plugins/`） |
+| **插件** | 子进程隔离架构（`~/.seelelink/plugins/`）|
+| **UI** | React + TypeScript、无边框窗口、深浅主题、VSCode 风格布局 |
 
 ---
 
@@ -49,6 +35,8 @@ npm run package         # 打包 → SeeleLink.exe
 ---
 
 ## 外部控制 API
+
+详细文档：[中文文档](docs/README.md) · [API 参考](docs/api-reference.md) · [Control API](docs/control-api.md) · [MCP Server](docs/mcp.md)
 
 ### Control API — `9380`（TCP JSON）
 
@@ -69,27 +57,6 @@ OpenClaw 配置（`~/.openclaw/config.json`）：
 { "mcpServers": { "SeeleLink": { "url": "http://127.0.0.1:9381/" } } }
 ```
 
-| 接口 | 命令/工具数 | 说明 |
-|------|------------|------|
-| Control API | **72** 个命令 | 鼠标、键盘、截图、窗口、SSH、Serial、插件、配置等 |
-| MCP | **89** 个工具 | 与 Control API 功能完全对等，JSON-RPC 2.0 |
-
-详细文档：[docs/control-api.md](docs/control-api.md) · [docs/mcp.md](docs/mcp.md) · [docs/api-reference.md](docs/api-reference.md)
-
----
-
-## 项目结构
-
-```
-electron/          主进程（IPC、连接管理、窗口）
-src/ui/           React 渲染进程（终端、Android、IR、设置）
-src/core/         连接存储、事件总线、插件管理
-src/services/     控制服务层（mouse/keyboard/screen/debug）
-platform/         跨平台适配（Windows Win32 / Linux X11 / macOS CGEvent）
-docs/             完整文档
-tests/integration/ 功能覆盖测试（115 项，自动化）
-```
-
 ---
 
 ## 数据存储
@@ -102,13 +69,13 @@ tests/integration/ 功能覆盖测试（115 项，自动化）
 ├── config.json         应用设置
 ├── electron.log        主日志
 ├── debug.log           调试日志
-├── logs/<Type>/        会话日志（ANSI 脱色）
+├── logs/<Type>/        会话日志
 └── plugins/<id>/       插件
 ```
 
 ---
 
-## 协议
+## 协议支持
 
 | 协议 | 库 | 备注 |
 |------|---|------|
@@ -117,7 +84,7 @@ tests/integration/ 功能覆盖测试（115 项，自动化）
 | PowerShell | `node-pty` | ConPTY 伪终端 |
 | Bash | `node-pty` | MSYS2/Git Bash |
 | WebSocket | `ws` | TCP 套接字 |
-| Android | `adb`（spawn） | WiFi ADB / USB |
+| Android | `adb`（spawn）| WiFi ADB / USB |
 | IR | 内置 | 串口或网络 |
 
 ---
