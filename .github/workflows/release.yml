@@ -67,10 +67,11 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────
-  # macOS Build — use macos-13 (Intel) for better native module compat
+  # macOS Build — use macos-latest (Intel fallback)
+  # Note: Apple Silicon runners available as macos-14
   # ─────────────────────────────────────────────────────────────
   build-macos:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -149,8 +150,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install xvfb (virtual display)
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Install xvfb and curl
+        run: sudo apt-get update && sudo apt-get install -y xvfb curl
 
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
@@ -158,30 +159,41 @@ jobs:
           name: SeeleLink-linux
           path: ./linux-unpacked
 
+      - name: List unpacked contents
+        run: ls -la ./linux-unpacked/ | head -20
+
       - name: Build Vite (for test helpers)
         run: npm run build
 
       - name: Make executable
         run: chmod +x ./linux-unpacked/seelelink
 
-      - name: Start Electron app (headless via xvfb)
+      - name: Start Electron app (headless via xvfb, --no-sandbox for CI)
         run: |
-          xvfb-run --auto-servernum ./linux-unpacked/seelelink &
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            ./linux-unpacked/seelelink \
+            --disable-gpu --no-sandbox --disable-software-rasterizer &
           echo $! > /tmp/electron.pid
           echo "Electron PID: $(cat /tmp/electron.pid)"
-          sleep 15
 
-      - name: Wait for services
+      - name: Wait for services (60s total)
         run: |
           for i in {1..30}; do
-            if curl -sf http://127.0.0.1:9380 > /dev/null 2>&1 && curl -sf http://127.0.0.1:9381/health > /dev/null 2>&1; then
-              echo "Services ready"
+            if curl -sf http://127.0.0.1:9380 > /dev/null 2>&1 && \
+               curl -sf http://127.0.0.1:9381/health > /dev/null 2>&1; then
+              echo "Services ready after ${i} attempts"
               exit 0
             fi
+            echo "Attempt $i: services not ready yet..."
             sleep 2
           done
-          echo "Services failed to start"
+          echo "=== Port 9380 ==="
           curl -v http://127.0.0.1:9380 || true
+          echo "=== Port 9381 ==="
+          curl -v http://127.0.0.1:9381/health || true
+          echo "=== Electron logs ==="
+          ls -la ~/.seelelink/ || true
+          cat ~/.seelelink/electron.log 2>/dev/null | tail -20 || true
           exit 1
 
       - name: Run integration tests
@@ -192,7 +204,7 @@ jobs:
         if: always()
         run: |
           if [ -f /tmp/electron.pid ]; then
-            kill $(cat /tmp/electron.pid) 2>/dev/null || true
+            kill -9 $(cat /tmp/electron.pid) 2>/dev/null || true
           fi
 
       - name: Upload test results
