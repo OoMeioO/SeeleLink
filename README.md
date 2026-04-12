@@ -18,6 +18,7 @@
 | **安全** | 密码 AES-256-GCM 加密、Shell 注入防护、坐标范围校验 |
 | **插件** | 子进程隔离架构（`~/.seelelink/plugins/`）|
 | **UI** | React + TypeScript、无边框窗口、深浅主题、VSCode 风格布局 |
+| **Web UI** | 浏览器访问（`:9383`）、WebBridge 多端同步（`:9382`）|
 
 ---
 
@@ -56,6 +57,18 @@ OpenClaw 配置（`~/.openclaw/config.json`）：
 ```json
 { "mcpServers": { "SeeleLink": { "url": "http://127.0.0.1:9381/" } } }
 ```
+
+### Web UI — `9383`（HTTP）
+
+在浏览器中打开 http://localhost:9383 访问 SeeleLink 界面，支持多端同步。
+
+```bash
+# 本地访问
+http://localhost:9383
+
+# 局域网访问（获取局域网 IP）
+# Settings → WebBridge 设置中查看局域网访问地址
+
 
 ---
 

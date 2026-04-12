@@ -24,7 +24,9 @@ const { fork } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const net = require('net');
+const http = require('http');
 const crypto = require('crypto');
+const { WebSocketServer } = require('ws');
 // Password encryption key derived from user-specific data
 let encryptionKey = null;
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
@@ -81,6 +83,7 @@ const configFilePath = path.join(os.homedir(), '.seelelink', 'config.json');
 const defaultConfig = {
   controlApi: { enabled: true, host: '127.0.0.1', port: 9380 },
   mcpApi: { enabled: false, host: '127.0.0.1', port: 9381 },
+  webBridge: { enabled: true, host: '0.0.0.0', port: 9382 },
   log: { enabled: true, path: null },
   windowCapture: { mode: 'auto' }, // "auto" | "foreground" | "gdi"
 };
@@ -93,6 +96,7 @@ function loadConfig() {
       return {
         controlApi: { ...defaultConfig.controlApi, ...savedConfig.controlApi },
         mcpApi: { ...defaultConfig.mcpApi, ...savedConfig.mcpApi },
+        webBridge: { ...defaultConfig.webBridge, ...savedConfig.webBridge },
         log: { ...defaultConfig.log, ...savedConfig.log },
         windowCapture: { ...defaultConfig.windowCapture, ...savedConfig.windowCapture },
       };
@@ -1235,12 +1239,18 @@ function connectPowerShell(connId) {
   pty.onData((data) => {
     if (mainWindow) mainWindow.webContents.send('ps:data:' + connId, data);
     if (logId) writeSessionLog(logId, 'receive', data);
+    // Forward to WebBridge client if this connection is owned by one
+    const wbClientId = webBridgeOwnedConnections.get(connId);
+    if (wbClientId) sendToWebBridgeByConnId(connId, 'data', data);
   });
 
   pty.onExit(() => {
     psConnections.delete(connId);
+    webBridgeOwnedConnections.delete(connId);
     if (mainWindow) mainWindow.webContents.send('ps:data:' + connId, '\r\n[PowerShell exited]\r\n');
     if (logId) closeSessionLog(logId);
+    // Notify WebBridge client
+    sendToWebBridgeByConnId(connId, 'data', '\r\n[PowerShell exited]\r\n');
   });
   psConnections.set(connId, { pty, connId, logId });
   return Promise.resolve('connected');
@@ -1316,12 +1326,18 @@ function connectCMD(connId) {
   pty.onData((data) => {
     if (mainWindow) mainWindow.webContents.send('cmd:data:' + connId, data);
     if (logId) writeSessionLog(logId, 'receive', data);
+    // Forward to WebBridge client if this connection is owned by one
+    const wbClientId = webBridgeOwnedConnections.get(connId);
+    if (wbClientId) sendToWebBridgeByConnId(connId, 'data', data);
   });
 
   pty.onExit(() => {
     cmdConnections.delete(connId);
+    webBridgeOwnedConnections.delete(connId);
     if (mainWindow) mainWindow.webContents.send('cmd:data:' + connId, '\r\n[Bash exited]\r\n');
     if (logId) closeSessionLog(logId);
+    // Notify WebBridge client
+    sendToWebBridgeByConnId(connId, 'data', '\r\n[Bash exited]\r\n');
   });
   cmdConnections.set(connId, { pty, connId, logId });
   return Promise.resolve('connected');
@@ -1659,6 +1675,530 @@ function stopControlServer() {
     try { controlServer.close(); } catch (e) {}
     controlServer = null;
     log('Control API server stopped');
+  }
+}
+
+// ============================================================
+// WebBridge Server (WebSocket relay for browser clients)
+// ============================================================
+let webBridgeServer = null;
+
+// Track active WebSocket connections and their sessions
+const webBridgeClients = new Map(); // clientId -> { ws, ip, sessions: Set, connections: Set }
+let webBridgeClientIdCounter = 1;
+
+// Session tracking for multi-user support
+const webBridgeSessions = new Map(); // sessionId -> { ownerId, type, connId, viewers: Set }
+
+// Track which WebBridge client owns which connection: connId -> clientId
+const webBridgeOwnedConnections = new Map(); // connId -> clientId
+
+// Send data to a specific WebBridge client
+function sendToWebBridgeClient(clientId, type, data) {
+  const client = webBridgeClients.get(clientId);
+  if (client && client.ws.readyState === 1) {
+    client.ws.send(JSON.stringify({ type, ...data }));
+  }
+}
+
+// Send data to all relevant WebBridge clients for a given connId
+function sendToWebBridgeByConnId(connId, dataType, payload) {
+  const clientId = webBridgeOwnedConnections.get(connId);
+  if (clientId) {
+    sendToWebBridgeClient(clientId, dataType, { connId, data: payload });
+  }
+}
+
+// Broadcast connection changes to all WebBridge clients and Electron renderer
+function broadcastConnectionsChanged() {
+  const conns = loadConnections();
+  log('[Broadcast] connections:changed to', webBridgeClients.size, 'clients, mainWindow:', !!mainWindow, '- total conns:', conns.length);
+  // Notify all WebBridge clients
+  for (const [clientId, client] of webBridgeClients) {
+    if (client.ws.readyState === 1) {
+      client.ws.send(JSON.stringify({ type: 'connections:changed' }));
+    }
+  }
+  // Notify Electron renderer (if any)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('connections:changed');
+  }
+}
+
+function startWebBridgeServer(cfg) {
+  if (webBridgeServer) {
+    try { webBridgeServer.close(); } catch (e) {}
+    webBridgeServer = null;
+  }
+  if (!cfg || !cfg.enabled) { log('WebBridge: disabled'); return; }
+
+  const host = cfg.host || '0.0.0.0';
+  const port = cfg.port || 9382;
+
+  webBridgeServer = new WebSocketServer({ host, port });
+
+  webBridgeServer.on('connection', (ws, req) => {
+    const clientId = webBridgeClientIdCounter++;
+    const ip = req.socket.remoteAddress || 'unknown';
+    log('WebBridge: client connected from', ip, 'id:', clientId);
+
+    webBridgeClients.set(clientId, { ws, ip, sessions: new Set(), connections: new Set() });
+
+    ws.on('message', async (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        await handleWebBridgeMessage(clientId, msg, ws);
+      } catch (e) {
+        log('WebBridge: message error:', e.message);
+        ws.send(JSON.stringify({ type: 'error', error: e.message }));
+      }
+    });
+
+    ws.on('close', () => {
+      log('WebBridge: client disconnected', clientId);
+      // Clean up client sessions
+      const client = webBridgeClients.get(clientId);
+      if (client) {
+        for (const sessionId of client.sessions) {
+          const session = webBridgeSessions.get(sessionId);
+          if (session) {
+            session.viewers.delete(clientId);
+            if (session.ownerId === clientId) {
+              // Owner left, notify viewers or close session
+              for (const viewerId of session.viewers) {
+                const viewer = webBridgeClients.get(viewerId);
+                if (viewer && viewer.ws.readyState === 1) {
+                  viewer.ws.send(JSON.stringify({
+                    type: 'session:owner_left',
+                    sessionId,
+                    connId: session.connId,
+                  }));
+                }
+              }
+              webBridgeSessions.delete(sessionId);
+            }
+          }
+        }
+        webBridgeClients.delete(clientId);
+      }
+    });
+
+    ws.on('error', (e) => {
+      log('WebBridge: socket error:', e.message);
+    });
+
+    // Send welcome message
+    ws.send(JSON.stringify({ type: 'connected', clientId }));
+  });
+
+  webBridgeServer.on('error', (e) => {
+    log('WebBridge server error:', e.message);
+  });
+
+  log('WebBridge server listening on ' + host + ':' + port);
+}
+
+function stopWebBridgeServer() {
+  if (webBridgeServer) {
+    try { webBridgeServer.close(); } catch (e) {}
+    webBridgeServer = null;
+    log('WebBridge server stopped');
+  }
+}
+
+// ── Web UI HTTP Server (for browser access) ──────────────────────────────────
+let webUIServer = null;
+
+function startWebUIServer(port = 9383) {
+  if (webUIServer) {
+    try { webUIServer.close(); } catch (e) {}
+  }
+
+  const distPath = path.join(__dirname, '..', 'dist-electron');
+
+  webUIServer = http.createServer((req, res) => {
+    let urlPath = req.url.split('?')[0];
+
+    // Default to index.html
+    if (urlPath === '/' || urlPath === '') {
+      urlPath = '/index.html';
+    }
+
+    const filePath = path.join(distPath, urlPath);
+
+    // Security: prevent directory traversal
+    if (!filePath.startsWith(distPath)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+
+    try {
+      if (fs.existsSync(filePath)) {
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = {
+          '.html': 'text/html',
+          '.js': 'application/javascript',
+          '.css': 'text/css',
+          '.json': 'application/json',
+          '.png': 'image/png',
+          '.jpg': 'image/jpeg',
+          '.ico': 'image/x-icon',
+          '.svg': 'image/svg+xml',
+          '.woff': 'font/woff',
+          '.woff2': 'font/woff2',
+        };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        const content = fs.readFileSync(filePath);
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(content);
+      } else {
+        // Fallback to index.html (SPA routing)
+        const indexPath = path.join(distPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          const content = fs.readFileSync(indexPath);
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(content);
+        } else {
+          res.writeHead(404);
+          res.end('Web UI not found. Run: npm run build');
+        }
+      }
+    } catch (e) {
+      res.writeHead(500);
+      res.end('Server error: ' + e.message);
+    }
+  });
+
+  webUIServer.on('error', (e) => {
+    log('Web UI server error:', e.message);
+  });
+
+  webUIServer.listen(port, '0.0.0.0', () => {
+    log(`Web UI server listening on http://0.0.0.0:${port}`);
+    log(`Open http://localhost:${port} in your browser to access SeeleLink`);
+  });
+}
+
+function stopWebUIServer() {
+  if (webUIServer) {
+    try { webUIServer.close(); } catch (e) {}
+    webUIServer = null;
+    log('Web UI server stopped');
+  }
+}
+
+// Handle WebBridge invoke commands - route to appropriate connection handlers
+async function handleWebBridgeInvoke(clientId, action, data, ws) {
+  const { connId, cmd, ...rest } = data || {};
+
+  try {
+    switch (action) {
+      // CMD/Bash
+      case 'cmd:connect': {
+        const result = await connectCMD(connId);
+        if (result === 'connected') {
+          // Track ownership
+          webBridgeOwnedConnections.set(connId, clientId);
+          const client = webBridgeClients.get(clientId);
+          if (client) client.connections.add(connId);
+        }
+        return result;
+      }
+      case 'cmd:disconnect':
+        if (cmdConnections.has(connId)) {
+          try { cmdConnections.get(connId).pty.kill(); } catch (e) {}
+          cmdConnections.delete(connId);
+          webBridgeOwnedConnections.delete(connId);
+          const client = webBridgeClients.get(clientId);
+          if (client) client.connections.delete(connId);
+        }
+        return 'disconnected';
+      case 'cmd:ready':
+        return 'ready';
+      case 'cmd:execute':
+        const cmdConn = cmdConnections.get(connId);
+        if (cmdConn && cmdConn.pty) {
+          cmdConn.pty.write(cmd);
+          return 'executed';
+        }
+        return 'not connected';
+
+      // PowerShell
+      case 'ps:connect': {
+        const result = await connectPowerShell(connId);
+        if (result === 'connected') {
+          webBridgeOwnedConnections.set(connId, clientId);
+          const client = webBridgeClients.get(clientId);
+          if (client) client.connections.add(connId);
+        }
+        return result;
+      }
+      case 'ps:disconnect': {
+        const result = disconnectPowerShell(connId);
+        webBridgeOwnedConnections.delete(connId);
+        return result;
+      }
+      case 'ps:execute':
+        const psConn = psConnections.get(connId);
+        if (psConn && psConn.pty) {
+          psConn.pty.write(cmd);  // No \r: client already sends \n with the command
+          return 'executed';
+        }
+        return 'not connected';
+
+      // SSH
+      case 'ssh:connect':
+        return await new Promise((resolve, reject) => {
+          const { Client } = require('ssh2');
+          const client = new Client();
+          client.on('ready', () => {
+            client.shell((err, stream) => {
+              if (err) { resolve({ error: err.message }); return; }
+              stream.on('data', (data) => {
+                sendToWebBridgeByConnId(connId, 'data', data.toString());
+              });
+              stream.stderr.on('data', (data) => {
+                sendToWebBridgeByConnId(connId, 'data', data.toString());
+              });
+              stream.on('close', () => {
+                sshConnections.delete(connId);
+                webBridgeOwnedConnections.delete(connId);
+              });
+              sshConnections.set(connId, { client, stream });
+              webBridgeOwnedConnections.set(connId, clientId);
+              const wbClient = webBridgeClients.get(clientId);
+              if (wbClient) wbClient.connections.add(connId);
+              resolve('connected');
+            });
+          });
+          client.on('error', (err) => { sshConnections.delete(connId); webBridgeOwnedConnections.delete(connId); resolve({ error: err.message }); });
+          client.connect({ host: rest.host, port: rest.port || 22, username: rest.username, password: rest.password, readyTimeout: 20000 });
+        });
+      case 'ssh:disconnect':
+        const sshConn = sshConnections.get(connId);
+        if (sshConn) { try { sshConn.client.end(); } catch (e) {} sshConnections.delete(connId); }
+        webBridgeOwnedConnections.delete(connId);
+        return 'disconnected';
+      case 'ssh:execute':
+        const sshStream = sshConnections.get(connId);
+        if (sshStream && sshStream.stream) {
+          sshStream.stream.write(cmd);  // No \r: client already sends \n with the command
+          return 'executed';
+        }
+        return 'not connected';
+
+      // Serial
+      case 'serial:list':
+        return listSerialPorts();
+      case 'serial:connect':
+        return await connectSerial(connId, rest.port, rest.baudRate);
+      case 'serial:disconnect':
+        return disconnectSerial(connId);
+      case 'serial:execute':
+        const serialConn = serialConnections.get(connId);
+        if (serialConn && serialConn.port && serialConn.port.isOpen) {
+          serialConn.port.write(data);
+          return 'executed';
+        }
+        return 'not connected';
+
+      // WebSocket
+      case 'ws:connect':
+        return await connectWebSocket(connId, rest.url);
+      case 'ws:disconnect':
+        return disconnectWebSocket(connId);
+      case 'ws:send':
+        const wsConn = wsConnections.get(connId);
+        if (wsConn && wsConn.ws && wsConn.ws.readyState === 1) {
+          wsConn.ws.send(rest.data);
+          return 'sent';
+        }
+        return 'not connected';
+
+      // Android
+      case 'android:devices':
+        return await getAndroidDevices();
+      case 'android:connect':
+        return await connectAndroid(connId, rest.deviceId);
+      case 'android:disconnect':
+        disconnectAndroid(connId);
+        return 'disconnected';
+      case 'android:scanNetwork': {
+        // WebBridge sends { options: { timeout, targetIp, port } }
+        // Extract options from data
+        const options = (data && typeof data === 'object' && data.options) ? data.options : {};
+        // Delegate to IPC handler's logic by calling scanAndroidNetwork function
+        return scanAndroidNetwork(options);
+      }
+
+      // App info
+      case 'app:getInfo':
+        return {
+          version: app.getVersion(),
+          webBridgeClients: webBridgeClients.size,
+          webBridgeEnabled: true,
+        };
+
+      // Connection management
+      case 'loadConnections':
+        log('[WebBridge] loadConnections called');
+        return loadConnections();
+      case 'saveConnection':
+        log('[WebBridge] saveConnection called with:', JSON.stringify(data && data.conn));
+        if (data && data.conn) {
+          const conns = loadConnections();
+          const existing = conns.findIndex(c => c.id === data.conn.id);
+          if (existing >= 0) {
+            conns[existing] = data.conn;
+          } else {
+            conns.push(data.conn);
+          }
+          saveConnections(conns);
+          broadcastConnectionsChanged();  // Notify all clients
+          return 'saved';
+        }
+        return 'invalid data';
+      case 'deleteConnection':
+        if (data && data.id) {
+          const conns = loadConnections().filter(c => c.id !== data.id);
+          saveConnections(conns);
+          broadcastConnectionsChanged();  // Notify all clients
+          return 'deleted';
+        }
+        return 'invalid id';
+
+      // Control commands - delegate to handleControlCommand
+      default:
+        return handleControlCommand({ cmd: action, args: [data] });
+    }
+  } catch (e) {
+    log('WebBridge invoke error:', e.message);
+    return { error: e.message };
+  }
+}
+
+async function handleWebBridgeMessage(clientId, msg, ws) {
+  const { type, action, sessionId, data } = msg;
+  const client = webBridgeClients.get(clientId);
+
+  switch (type) {
+    case 'invoke': {
+      // Route invoke messages to appropriate handlers
+      const result = await handleWebBridgeInvoke(clientId, action, data, ws);
+      ws.send(JSON.stringify({ type: 'response', id: msg.id, result }));
+      break;
+    }
+
+    case 'session:join': {
+      // Join an existing session (viewer mode)
+      const session = webBridgeSessions.get(sessionId);
+      if (!session) {
+        ws.send(JSON.stringify({ type: 'error', error: 'Session not found' }));
+        return;
+      }
+      session.viewers.add(clientId);
+      client.sessions.add(sessionId);
+      ws.send(JSON.stringify({
+        type: 'session:joined',
+        sessionId,
+        connId: session.connId,
+        mode: 'viewer',
+      }));
+      // Notify owner
+      const owner = webBridgeClients.get(session.ownerId);
+      if (owner && owner.ws.readyState === 1) {
+        owner.ws.send(JSON.stringify({
+          type: 'session:viewer_joined',
+          sessionId,
+          viewerId: clientId,
+        }));
+      }
+      break;
+    }
+
+    case 'session:leave': {
+      const session = webBridgeSessions.get(sessionId);
+      if (session) {
+        session.viewers.delete(clientId);
+        client.sessions.delete(sessionId);
+        // Notify owner
+        const owner = webBridgeClients.get(session.ownerId);
+        if (owner && owner.ws.readyState === 1) {
+          owner.ws.send(JSON.stringify({
+            type: 'session:viewer_left',
+            sessionId,
+            viewerId: clientId,
+          }));
+        }
+      }
+      break;
+    }
+
+    case 'session:create': {
+      // Create a new session (owner mode)
+      // First, we need to execute the actual connection through IPC
+      // For now, just create the session tracking
+      const newSessionId = sessionId || `session-${Date.now()}`;
+      webBridgeSessions.set(newSessionId, {
+        ownerId: clientId,
+        type: data?.type || 'unknown',
+        connId: data?.connId,
+        viewers: new Set(),
+      });
+      client.sessions.add(newSessionId);
+      ws.send(JSON.stringify({
+        type: 'session:created',
+        sessionId: newSessionId,
+        connId: data?.connId,
+        mode: 'owner',
+      }));
+      break;
+    }
+
+    case 'data': {
+      // Forward data to session (for sessions this client owns)
+      for (const sid of client.sessions) {
+        const session = webBridgeSessions.get(sid);
+        if (session && session.ownerId === clientId) {
+          // Broadcast to all viewers
+          for (const viewerId of session.viewers) {
+            const viewer = webBridgeClients.get(viewerId);
+            if (viewer && viewer.ws.readyState === 1) {
+              viewer.ws.send(JSON.stringify({
+                type: 'data',
+                sessionId: sid,
+                data,
+              }));
+            }
+          }
+        }
+      }
+      break;
+    }
+
+    default:
+      ws.send(JSON.stringify({ type: 'error', error: 'Unknown message type' }));
+  }
+}
+
+// Helper to broadcast data to all viewers of a session
+function broadcastToSession(sessionId, data) {
+  const session = webBridgeSessions.get(sessionId);
+  if (!session) return;
+
+  // Send to owner
+  const owner = webBridgeClients.get(session.ownerId);
+  if (owner && owner.ws.readyState === 1) {
+    owner.ws.send(JSON.stringify({ type: 'data', sessionId, data }));
+  }
+
+  // Send to viewers
+  for (const viewerId of session.viewers) {
+    const viewer = webBridgeClients.get(viewerId);
+    if (viewer && viewer.ws.readyState === 1) {
+      viewer.ws.send(JSON.stringify({ type: 'data', sessionId, data }));
+    }
   }
 }
 
@@ -3559,6 +4099,59 @@ function stopMcpServer() {
 // NOTE: Whitelist removed for debug purposes - all commands are allowed
 // const ALLOWED_CONTROL_COMMANDS = new Set([...]);
 
+// ── Global ADB Path Finder ──────────────────────────────────────────────
+// Defined globally so both handleControlCommand and scanAndroidNetwork can use it
+function findAdbPath() {
+  const { existsSync } = require('fs');
+  const { env } = require('process');
+  const { execSync } = require('child_process');
+
+  // Try PATH first
+  try {
+    const output = execSync('where adb', { encoding: 'utf8', timeout: 5000 });
+    const adbInPath = output.trim().split('\n')[0];
+    log('[ADB] Found in PATH:', adbInPath);
+    if (adbInPath && existsSync(adbInPath)) return adbInPath;
+  } catch (e) {
+    log('[ADB] Not found in PATH:', e.message);
+  }
+
+  // Try common Windows locations (LOCALAPPDATA and F: drive where Android SDK might be installed)
+  const localAppData = env.LOCALAPPDATA || '';
+  const programFiles = env['ProgramFiles'] || 'C:\\Program Files';
+  const programFilesX86 = env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const home = env.USERPROFILE || env.HOME || '';
+
+  const commonPaths = [
+    // Standard LOCALAPPDATA
+    `${localAppData}\\Android\\Sdk\\platform-tools\\adb.exe`,
+    // F: drive (common for developers with limited C: drive space)
+    `F:\\worksapce\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe`,
+    `F:\\Android\\Sdk\\platform-tools\\adb.exe`,
+    // Program Files locations
+    `${programFiles}\\Android\\Sdk\\platform-tools\\adb.exe`,
+    `${programFilesX86}\\Android\\Sdk\\platform-tools\\adb.exe`,
+    // Home directory
+    `${home}\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe`,
+    // Old SDK locations
+    'C:\\Android\\Sdk\\platform-tools\\adb.exe',
+    'C:\\Program Files\\Android\\android-sdk\\platform-tools\\adb.exe',
+    'C:\\Program Files (x86)\\Android\\android-sdk\\platform-tools\\adb.exe',
+  ];
+
+  for (const p of commonPaths) {
+    try {
+      if (existsSync(p)) {
+        log('[ADB] Found at:', p);
+        return p;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  log('[ADB] WARNING: adb not found, returning "adb" as fallback');
+  return 'adb'; // fallback to PATH lookup (will likely fail)
+}
+
 async function handleControlCommand(req) {
   if (!req || typeof req !== 'object') return { error: 'invalid request' };
   const { cmd, args = [] } = req;
@@ -4171,14 +4764,24 @@ async function handleControlCommand(req) {
     }
 
     // ── ADB Commands ─────────────────────────────────────────────────
+
+    // ── ADB Commands ─────────────────────────────────────────────────
+
     case 'exec:adb': {
-      const adbArgs = args;
+      // args from WebBridge invoke is [data] where data = { args: [...] }
+      // args from IPC is already the array
+      log('[exec:adb] args:', JSON.stringify(args));
+      const adbArgs = Array.isArray(args[0]) ? args[0] : (args[0] && args[0].args) ? args[0].args : args;
+      log('[exec:adb] adbArgs:', JSON.stringify(adbArgs));
+      const adbPath = findAdbPath();
+      log('[exec:adb] adbPath:', adbPath);
       return new Promise((resolve) => {
         try {
           const { spawn } = require('child_process');
           let stdout = '';
           let stderr = '';
-          const proc = spawn('adb', adbArgs);
+          const adbPath = findAdbPath();
+          const proc = spawn(adbPath, adbArgs);
           proc.stdout.on('data', (d) => { stdout += d.toString(); });
           proc.stderr.on('data', (d) => { stderr += d.toString(); });
           proc.on('close', (code) => {
@@ -4196,8 +4799,9 @@ async function handleControlCommand(req) {
         try {
           const { spawn } = require('child_process');
           const { Buffer } = require('buffer');
+          const adbPath = findAdbPath();
           const adbArgs = ['-s', deviceId, 'exec-out', 'screencap', '-p'];
-          const proc = spawn('adb', adbArgs);
+          const proc = spawn(adbPath, adbArgs);
 
           const chunks = [];
           proc.stdout.on('data', (chunk) => chunks.push(chunk));
@@ -4501,7 +5105,7 @@ async function handleControlCommand(req) {
             }
           }
         }
-        return { ok: true, result: ips };
+        return { ok: true, ips };
       } catch (e) { return { ok: false, error: e.message }; }
     }
     case 'android:scanNetwork': {
@@ -4630,6 +5234,8 @@ app.whenReady().then(() => {
   createWindow();
   startControlServer(appConfig.controlApi);
   startMcpServer(appConfig.mcpApi);
+  startWebBridgeServer(appConfig.webBridge);
+  startWebUIServer(9383);
 
   // Initialize plugin system
   initializePlugins();
@@ -4654,6 +5260,8 @@ app.on('window-all-closed', async () => {
   await shutdownPlugins();
   stopControlServer();
   stopMcpServer();
+  stopWebBridgeServer();
+  stopWebUIServer();
   app.quit();
 });
 
@@ -4855,6 +5463,7 @@ ipcMain.handle('saveConnection', async (event, conn) => {
   if (idx >= 0) conns[idx] = conn;
   else conns.push(conn);
   saveConnections(conns);
+  broadcastConnectionsChanged();  // Notify all clients
   return 'saved';
 });
 
@@ -4867,6 +5476,7 @@ ipcMain.handle('deleteConnection', async (event, id) => {
   log('Delete connection:', id);
   const conns = loadConnections().filter(c => c.id !== id);
   saveConnections(conns);
+  broadcastConnectionsChanged();  // Notify all clients
   return 'deleted';
 });
 
@@ -5412,6 +6022,8 @@ ipcMain.handle('app:getInfo', async () => {
       : path.join(__dirname, '..', 'SEELINK_CONTROL.md'),
     version: app.getVersion(),
     userDataPath: app.getPath('userData'),
+    webBridgeClients: webBridgeClients.size,
+    webBridgeEnabled: appConfig.webBridge?.enabled ?? true,
   };
 });
 
@@ -5517,12 +6129,12 @@ ipcMain.handle('android:getLocalIpForTarget', async (event, targetIp) => {
 });
 
 // Scan LAN for Android devices via port 5555 + ADB mDNS discovery
-ipcMain.handle('android:scanNetwork', async (event, options = {}) => {
+// Shared function for both IPC and WebBridge
+async function scanAndroidNetwork(options = {}) {
   const { timeout = 3000, targetIp = null, port = 5555 } = options;
-  const { spawn, exec } = require('child_process');
-  const dns = require('dns');
+  const { exec } = require('child_process');
   const net = require('net');
-
+  const adbPath = findAdbPath();
   const results = [];
   const localIps = [];
 
@@ -5583,7 +6195,7 @@ ipcMain.handle('android:scanNetwork', async (event, options = {}) => {
   // Step 4: For each potential device found, try adb connect
   const tryConnect = (ip, portNum) => {
     return new Promise((resolve) => {
-      exec(`adb connect ${ip}:${portNum}`, { timeout: 8000 }, (err, stdout, stderr) => {
+      exec(`"${adbPath}" connect ${ip}:${portNum}`, { timeout: 8000 }, (err, stdout, stderr) => {
         if (err) {
           // Timeout or network error - skip this IP, it's not a working ADB device
           resolve({ ip, port: portNum, connected: false, skipped: true, error: err.message });
@@ -5606,11 +6218,11 @@ ipcMain.handle('android:scanNetwork', async (event, options = {}) => {
   // Step 5: Get device info after successful connection
   const getDeviceInfo = (deviceId) => {
     return new Promise((resolve) => {
-      exec(`adb -s ${deviceId} shell getprop ro.product.model`, { timeout: 5000 }, (err, stdout) => {
+      exec(`"${adbPath}" -s ${deviceId} shell getprop ro.product.model`, { timeout: 5000 }, (err, stdout) => {
         const model = err ? null : stdout.trim() || null;
-        exec(`adb -s ${deviceId} shell getprop ro.product.manufacturer`, { timeout: 5000 }, (err2, stdout2) => {
+        exec(`"${adbPath}" -s ${deviceId} shell getprop ro.product.manufacturer`, { timeout: 5000 }, (err2, stdout2) => {
           const manufacturer = err2 ? null : stdout2.trim() || null;
-          exec(`adb -s ${deviceId} shell getprop ro.build.version.release`, { timeout: 5000 }, (err3, stdout3) => {
+          exec(`"${adbPath}" -s ${deviceId} shell getprop ro.build.version.release`, { timeout: 5000 }, (err3, stdout3) => {
             const version = err3 ? null : stdout3.trim() || null;
             resolve({ model, manufacturer, version });
           });
@@ -5692,6 +6304,11 @@ ipcMain.handle('android:scanNetwork', async (event, options = {}) => {
     log('android:scanNetwork error:', e.message);
     return { ok: false, error: e.message, devices: [] };
   }
+}
+
+// IPC handler that delegates to shared function
+ipcMain.handle('android:scanNetwork', async (event, options = {}) => {
+  return scanAndroidNetwork(options);
 });
 
 // ── Window Capture Config ─────────────────────────────────────────────────

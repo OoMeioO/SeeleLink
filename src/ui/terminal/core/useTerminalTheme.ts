@@ -15,10 +15,10 @@ export function useTerminalTheme() {
     const isDark = themeName === 'dark';
 
     return {
-      background:   colors.bg,
-      foreground:   colors.text,
-      cursor:       colors.text,
-      cursorAccent: colors.bg,
+      background:   colors.bg || '#1e1e1e',
+      foreground:   colors.text || '#d4d4d4',
+      cursor:       colors.text || '#d4d4d4',
+      cursorAccent: colors.bg || '#1e1e1e',
 
       // Normal ANSI colors
       black:   '#000000',
@@ -41,7 +41,7 @@ export function useTerminalTheme() {
       brightWhite:   isDark ? '#FFFFFF' : '#F5F5F5',
 
       selectionBackground: isDark ? 'rgba(13,125,217,0.3)' : 'rgba(0,102,204,0.3)',
-      selectionForeground: colors.text,
+      selectionForeground: colors.text || '#d4d4d4',
     };
   }, [colors, themeName]);
 }

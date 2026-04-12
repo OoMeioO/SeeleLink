@@ -206,6 +206,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   irLoad: () => ipcRenderer.invoke('ir:load'),
   irSave: (data) => ipcRenderer.invoke('ir:save', data),
 
+  // Listen for connections changed from other clients (for sync)
+  onConnectionsChanged: (callback) => {
+    const ch = 'connections:changed';
+    ipcRenderer.removeAllListeners(ch);
+    ipcRenderer.on(ch, () => callback());
+  },
+
   // Window Capture Config
   windowCaptureGetConfig: () => ipcRenderer.invoke('windowCapture:getConfig'),
   windowCaptureSetConfig: (mode) => ipcRenderer.invoke('windowCapture:setConfig', { mode }),

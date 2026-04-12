@@ -8,6 +8,10 @@ export default defineConfig({
   base: './',
   build: { outDir: 'dist-electron', emptyOutDir: true, sourcemap: false, minify: false, chunkSizeWarningLimit: 1000 },
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
-  server: { port: 5173 },
+  server: {
+    port: 5173,
+    host: '0.0.0.0', // Allow LAN access
+    allowedHosts: true, // Allow all hosts for WebBridge connections
+  },
   css: { devSourcemap: true },
 });

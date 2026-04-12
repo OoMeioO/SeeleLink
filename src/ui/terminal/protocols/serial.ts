@@ -6,7 +6,13 @@ import { electronAPI } from '../../electronAPI.js';
 
 export function createSerialAdapter(_options: ProtocolAdapterOptions): ProtocolAdapter {
   return {
-    send: (data: string) => electronAPI.serialExecute(_options.connId, data),
-    disconnect: () => electronAPI.serialDisconnect(_options.connId),
+    send: (data: string) => {
+      if (!window.electronAPI) return;
+      electronAPI.serialExecute(_options.connId, data);
+    },
+    disconnect: () => {
+      if (!window.electronAPI) return;
+      electronAPI.serialDisconnect(_options.connId);
+    },
   };
 }

@@ -13,6 +13,7 @@ export interface ElectronAPI {
   saveConnection: (conn: SavedConn) => Promise<void>;
   loadConnections: () => Promise<SavedConn[]>;
   deleteConnection: (id: string) => Promise<void>;
+  onConnectionsChanged: (callback: () => void) => void;
 
   // --- PowerShell ---
   psConnect:      (connId: string) => Promise<void>;
@@ -139,4 +140,12 @@ declare global {
   interface Window { electronAPI: ElectronAPI; }
 }
 
-export const electronAPI: ElectronAPI = window.electronAPI;
+export const electronAPI: ElectronAPI = new Proxy({} as ElectronAPI, {
+  get(_target, prop) {
+    if (!window.electronAPI) {
+      console.warn(`electronAPI.${String(prop)} called before API was ready`);
+      return undefined;
+    }
+    return (window.electronAPI as ElectronAPI)[prop as keyof ElectronAPI];
+  }
+});

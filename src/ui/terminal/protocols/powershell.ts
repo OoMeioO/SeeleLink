@@ -6,7 +6,13 @@ import { electronAPI } from '../../electronAPI.js';
 
 export function createPowershellAdapter(_options: ProtocolAdapterOptions): ProtocolAdapter {
   return {
-    send: (data: string) => electronAPI.psExecute(_options.connId, data),
-    disconnect: () => electronAPI.psDisconnect(_options.connId),
+    send: (data: string) => {
+      if (!window.electronAPI) return;
+      electronAPI.psExecute(_options.connId, data);
+    },
+    disconnect: () => {
+      if (!window.electronAPI) return;
+      electronAPI.psDisconnect(_options.connId);
+    },
   };
 }

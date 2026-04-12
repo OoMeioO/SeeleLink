@@ -52,6 +52,8 @@ docs/
 |---------|------|----------|
 | Control API | 9380 | TCP JSON |
 | MCP Server | 9381 | HTTP+SSE |
+| WebBridge | 9382 | WebSocket |
+| Web UI | 9383 | HTTP |
 
 ## Quick Start
 

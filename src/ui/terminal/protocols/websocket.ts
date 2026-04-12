@@ -6,7 +6,13 @@ import { electronAPI } from '../../electronAPI.js';
 
 export function createWebSocketAdapter(_options: ProtocolAdapterOptions): ProtocolAdapter {
   return {
-    send: (data: string) => electronAPI.wsSend(_options.connId, data),
-    disconnect: () => electronAPI.wsDisconnect(_options.connId),
+    send: (data: string) => {
+      if (!window.electronAPI) return;
+      electronAPI.wsSend(_options.connId, data);
+    },
+    disconnect: () => {
+      if (!window.electronAPI) return;
+      electronAPI.wsDisconnect(_options.connId);
+    },
   };
 }

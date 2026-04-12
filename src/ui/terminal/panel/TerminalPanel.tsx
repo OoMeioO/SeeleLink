@@ -67,6 +67,9 @@ export function TerminalPanel({ connTabs, activeConnTabId, onTerminalReady }: Te
 
   // Register IPC listeners for new tabs (once per unique connId)
   useEffect(() => {
+    // Wait for electronAPI to be ready in browser mode
+    if (!window.electronAPI) return;
+
     for (const tab of connTabs) {
       const key = tab.connId;
       if (ipcReadyRef.current.has(key)) continue;
@@ -115,6 +118,12 @@ export function TerminalPanel({ connTabs, activeConnTabId, onTerminalReady }: Te
     handleMapRef.current.set(tabId, handle);
     const tab = connTabsRef.current.find(t => t.id === tabId);
     if (!tab) return;
+
+    // Wait for electronAPI to be ready in browser mode
+    if (!window.electronAPI) {
+      handle.write('[Error: API not ready, please refresh]\r\n');
+      return;
+    }
 
     if (!tab.isConnected) {
       const { connId, conn } = tab;

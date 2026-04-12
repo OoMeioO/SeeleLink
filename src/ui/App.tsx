@@ -67,6 +67,7 @@ export default function App() {
   const [connTabs, setConnTabs] = useState<TerminalPanelTab[]>([]);
   const [activeConnTabId, setActiveConnTabId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [apiReady, setApiReady] = useState(false);
 
   // Android page state - lifted here so it survives tab switches
   const [androidTabs, setAndroidTabs] = useState<ConnectionTab[]>([]);
@@ -79,6 +80,32 @@ export default function App() {
     devices: [],
     sequences: [],
   });
+
+  // Auto-detect environment and initialize API
+  useEffect(() => {
+    // If window.electronAPI already exists (Electron), do nothing
+    if (window.electronAPI) {
+      console.log('[App] Using Electron API');
+      return;
+    }
+
+    // Otherwise, we're in browser mode - use WebBridge API
+    // Get WebBridge URL from query param or use default
+    const params = new URLSearchParams(window.location.search);
+    const wsUrl = params.get('ws') || 'ws://localhost:9382';
+    console.log('[App] Browser mode detected, connecting to WebBridge:', wsUrl);
+
+    // Dynamically import and initialize webAPI
+    import('./webAPI').then(({ createWebAPI }) => {
+      const api = createWebAPI(wsUrl);
+      // @ts-ignore - we're setting a runtime property
+      window.electronAPI = api;
+      setApiReady(true);
+      console.log('[App] WebBridge API initialized');
+    }).catch(err => {
+      console.error('[App] Failed to initialize WebBridge API:', err);
+    });
+  }, []);
 
   // Load IR data on mount
   useEffect(() => {
@@ -136,10 +163,29 @@ export default function App() {
 
   // Load saved connections
   useEffect(() => {
-    window.electronAPI?.loadConnections().then(setSavedConns).catch(console.error);
+    window.electronAPI?.loadConnections().then(conns => {
+      console.log('[App] loadConnections returned:', conns?.length, 'connections');
+      setSavedConns(conns || []);
+    }).catch(e => console.error('[App] loadConnections error:', e));
     window.electronAPI?.windowCaptureGetConfig().then(cfg => {
       if (cfg?.mode) setWindowCaptureMode(cfg.mode);
     }).catch(console.error);
+
+    // Listen for connection changes from other clients (Web-App sync)
+    const handleConnectionsChanged = () => {
+      console.log('[App] connections changed event received');
+      window.electronAPI?.loadConnections().then(setSavedConns).catch(console.error);
+    };
+    // Browser/WebBridge path: custom event dispatched by webAPI
+    window.addEventListener('seelelink:connections-changed', handleConnectionsChanged);
+    // Also reload connections when WebSocket reconnects (e.g., after page refresh)
+    window.addEventListener('seelelink:connected', handleConnectionsChanged);
+    // Electron renderer path: IPC listener from main process
+    window.electronAPI?.onConnectionsChanged?.(handleConnectionsChanged);
+    return () => {
+      window.removeEventListener('seelelink:connections-changed', handleConnectionsChanged);
+      window.removeEventListener('seelelink:connected', handleConnectionsChanged);
+    };
   }, []);
 
   // Window capture mode handler
@@ -265,7 +311,7 @@ export default function App() {
 
   // Render Settings content
   const renderSettings = () => (
-    <div style={{ padding: '24px 32px', flex: 1 }}>
+    <div style={{ padding: '24px 32px', flex: 1, overflow: 'auto' }}>
       <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: colors.text, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Settings size={20} style={{ verticalAlign: 'middle' }} /> Settings
       </h2>
@@ -405,6 +451,9 @@ export default function App() {
         </div>
       </SettingsRow>
 
+      {/* WebBridge - Web UI Access */}
+      <WebBridgeSettings />
+
       {/* Session Logs */}
       <SessionLogSettings />
 
@@ -491,6 +540,15 @@ export default function App() {
   // Render
   return (
     <div style={styles.container}>
+      {/* Loading screen when API is not ready in browser mode */}
+      {!apiReady && !window.electronAPI && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
+          <Activity size={48} style={{ color: colors.primary, animation: 'pulse 1.5s infinite' }} />
+          <div style={{ fontSize: 14, color: colors.textSecondary }}>Connecting to WebBridge...</div>
+          <div style={{ fontSize: 11, color: colors.textTertiary }}>ws://localhost:9382</div>
+        </div>
+      )}
+
       {/* Title Bar */}
       <div style={{ ...styles.titleBar, padding: '0 16px' }}>
         <div style={styles.logo}>
@@ -699,7 +757,8 @@ export default function App() {
           availableComPorts={availableComPorts}
           setAvailableComPorts={setAvailableComPorts}
           onSave={async (conn) => {
-            await window.electronAPI?.saveConnection(conn);
+            if (!window.electronAPI) return;
+            await window.electronAPI.saveConnection(conn);
             setSavedConns(prev => [...prev, conn]);
             setShowModal(false);
             setForm({ name: '', host: '', port: '22', username: '', password: '', serialPort: '', baudRate: '115200', url: 'ws://localhost:8080' });
@@ -775,6 +834,76 @@ function SessionLogSettings() {
           style={{ ...styles.button, height: 28 }}
           title="打开日志目录"
         >📂</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// WebBridge Settings Component
+// ============================================================
+function WebBridgeSettings() {
+  const { theme, styles } = useTheme();
+  const colors = theme.colors;
+  const [connectedClients, setConnectedClients] = React.useState(0);
+  const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron');
+
+  React.useEffect(() => {
+    // Poll for connected clients count every 5 seconds
+    const interval = setInterval(async () => {
+      try {
+        const info = await window.electronAPI?.appGetInfo?.();
+        if (info && info.webBridgeClients !== undefined) {
+          setConnectedClients(info.webBridgeClients);
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
+  };
+
+  return (
+    <div style={{ padding: '12px 0', borderBottom: `1px solid ${colors.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Globe size={16} style={{ color: colors.textSecondary, verticalAlign: 'middle' }} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: colors.text }}>WebBridge</div>
+            <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>ws://localhost:9382</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: colors.success + '22', color: colors.success }}>Enabled</span>
+          {connectedClients > 0 && (
+            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: colors.primary + '22', color: colors.primary }}>
+              {connectedClients} client{connectedClients !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Web UI Access - always show in both Electron and Browser */}
+      <div style={{ marginTop: 12, padding: '8px 12px', backgroundColor: colors.bgSecondary, borderRadius: 6 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: colors.text, marginBottom: 6 }}>Web UI 访问 / Web UI Access</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <code style={{ fontSize: 11, padding: '2px 6px', backgroundColor: colors.bg, borderRadius: 3, color: colors.primary }}>http://localhost:9383</code>
+          <button
+            type="button"
+            title="Copy URL"
+            onClick={() => copyToClipboard('http://localhost:9383')}
+            style={{ ...styles.button, height: 22, padding: '0 8px', fontSize: 10, display: 'flex', alignItems: 'center', gap: 3 }}
+          >
+            <span style={{ fontSize: 10 }}>复制</span>
+          </button>
+        </div>
+        <div style={{ fontSize: 10, color: colors.textTertiary, marginTop: 4 }}>
+          在浏览器中打开此地址访问 SeeleLink Web UI / Open this URL in browser to access SeeleLink Web UI
+        </div>
       </div>
     </div>
   );

@@ -33,17 +33,32 @@ export const TerminalCore = forwardRef<TerminalHandle, TerminalCoreProps>(
     // Initialize xterm — runs once per tabId (empty deps)
     useEffect(() => {
       if (!containerRef.current || initedRef.current) return;
+
+      // Ensure xterm modules are loaded
+      if (typeof XTerminal === 'undefined' || typeof FitAddon === 'undefined') {
+        console.error('[Terminal] xterm modules not loaded, retrying...');
+        initedRef.current = false;
+        return;
+      }
+
       initedRef.current = true;
 
-      const term = new XTerminal({
-        cursorBlink: true,
-        fontSize: 14,
-        fontFamily: '"Cascadia Code", "Fira Code", Consolas, "Microsoft YaHei", monospace',
-        theme: xtermTheme,
-        cursorStyle: 'block',
-        bellStyle: 'none',
-        scrollback: 10000,
-      });
+      let term;
+      try {
+        term = new XTerminal({
+          cursorBlink: true,
+          fontSize: 14,
+          fontFamily: '"Cascadia Code", "Fira Code", Consolas, "Microsoft YaHei", monospace',
+          theme: xtermTheme,
+          cursorStyle: 'block',
+          bellStyle: 'none',
+          scrollback: 10000,
+        });
+      } catch (e) {
+        console.error('[Terminal] Failed to create terminal:', e);
+        initedRef.current = false;
+        return;
+      }
 
       const fit = new FitAddon();
       term.loadAddon(fit);
@@ -176,20 +191,20 @@ export const TerminalCore = forwardRef<TerminalHandle, TerminalCoreProps>(
 
       // Build the handle
       const handle: TerminalHandle = {
-        write:         (data) => term.write(data),
-        clear:         ()    => term.clear(),
-        focus:         ()    => term.focus(),
-        resize:        ()    => { try { fit.fit(); } catch { /* ignore */ } },
-        getAllText:    ()    => term.buffer.active.getLine(0)?.translateToString(true) ?? '',
-        getVisibleText: ()   => term.buffer.active.viewportElement?.textContent ?? '',
-        hasSelection:   ()    => term.hasSelection(),
-        getSelection:  ()    => term.getSelection(),
-        copySelection: ()    => term.copySelection(),
-        paste:         (text) => term.paste(text),
-        selectAll:     ()    => term.selectAll(),
-        clearSelection:()    => term.clearSelection(),
-        getSize:       ()    => ({ cols: term.cols, rows: term.rows }),
-        scrollToBottom:()    => term.scrollToBottom(),
+        write:         (data) => { try { term?.write(data); } catch (e) { console.error('[Terminal] write error:', e); } },
+        clear:         ()    => { try { term?.clear(); } catch { /* ignore */ } },
+        focus:         ()    => { try { term?.focus(); } catch { /* ignore */ } },
+        resize:        ()    => { try { fit?.fit(); } catch { /* ignore */ } },
+        getAllText:    ()    => { try { return term?.buffer?.active?.getLine(0)?.translateToString(true) ?? ''; } catch { return ''; } },
+        getVisibleText: ()   => { try { return term?.buffer?.active?.viewportElement?.textContent ?? ''; } catch { return ''; } },
+        hasSelection:   ()    => { try { return term?.hasSelection() ?? false; } catch { return false; } },
+        getSelection:  ()    => { try { return term?.getSelection() ?? ''; } catch { return ''; } },
+        copySelection: ()    => { try { term?.copySelection(); } catch { /* ignore */ } },
+        paste:         (text) => { try { term?.paste(text); } catch { /* ignore */ } },
+        selectAll:     ()    => { try { term?.selectAll(); } catch { /* ignore */ } },
+        clearSelection:()    => { try { term?.clearSelection(); } catch { /* ignore */ } },
+        getSize:       ()    => ({ cols: term?.cols ?? 80, rows: term?.rows ?? 24 }),
+        scrollToBottom:()    => { try { term?.scrollToBottom(); } catch { /* ignore */ } },
       };
 
       if (onReady) onReady(tabId, handle);
