@@ -18,6 +18,7 @@ Unified Connector Tool — SSH · Serial · PowerShell · Bash · WebSocket · A
 | **Security** | AES-256-GCM encrypted passwords, shell injection protection |
 | **Plugin System** | Isolated subprocess plugins (`~/.seelelink/plugins/`) |
 | **UI** | React + TypeScript, frameless window, dark/light themes, VSCode-style layout |
+| **Web UI** | Browser access (`9383`), WebBridge multi-client sync (`9382`) |
 
 ---
 
@@ -57,11 +58,23 @@ OpenClaw config (`~/.openclaw/config.json`):
 { "mcpServers": { "SeeleLink": { "url": "http://127.0.0.1:9381/" } } }
 ```
 
+### Web UI — `9383` (HTTP)
+
+Access SeeleLink in your browser at `http://localhost:9383` with multi-client sync support.
+
+```bash
+# Local access
+# http://localhost:9383
+
+# LAN access (get IP from Settings)
+# Settings → WebBridge to find LAN access address
+```
+
 ---
 
 ## Data Storage
 
-```
+```text
 ~/.seelelink/
 ├── connections.json    Connection configs
 ├── commands.json       Quick commands

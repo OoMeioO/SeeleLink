@@ -60,21 +60,21 @@ OpenClaw 配置（`~/.openclaw/config.json`）：
 
 ### Web UI — `9383`（HTTP）
 
-在浏览器中打开 http://localhost:9383 访问 SeeleLink 界面，支持多端同步。
+在浏览器中打开 `http://localhost:9383` 访问 SeeleLink 界面，支持多端同步。
 
 ```bash
 # 本地访问
-http://localhost:9383
+# http://localhost:9383
 
 # 局域网访问（获取局域网 IP）
 # Settings → WebBridge 设置中查看局域网访问地址
-
+```
 
 ---
 
 ## 数据存储
 
-```
+```text
 ~/.seelelink/
 ├── connections.json    连接配置
 ├── commands.json       快捷命令
