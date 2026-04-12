@@ -38,6 +38,8 @@
 - [x] 窗口截图多模式（auto / foreground / gdi）
 - [x] PowerShell/Bash 中文支持（GBK→UTF8 / ConPTY UTF-8）
 - [x] 窗口自动化 UI（截图、点击、坐标发现）
+- [x] 设计主题系统（Airbnb/Linear/Stripe/Claude 深浅色主题）
+- [x] 主题颜色修复（MenuButton/SessionLogSettings/NewConnectionModal/SimpleInput/SimpleSelect/useTerminalTheme）
 
 ### 架构
 

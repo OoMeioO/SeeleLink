@@ -115,27 +115,25 @@ websocket.ts ──► ipcRenderer.invoke('ws:send', { connId, data })
 ## 5. 主题系统
 
 ```
-theme.ts — flat theme
-  │
-  ├── lightTheme: colors object
-  │     bg: #FFFFFF, bgSecondary: #F5F5F5, primary: #4A9EFF ...
-  │
-  └── darkTheme: colors object
-        bg: #1C1C1E, bgSecondary: #252526, primary: #4A9EFF ...
+ThemeProvider ──► useTheme() ──► { theme, styles, designTheme, setDesignTheme, availableDesignThemes }
+                                        │
+                                        ▼
+                                  theme: { name, colors: {...}, spacing, radius, font }
+                                  colors: { bg, bgSecondary, text, primary, border, success, error, ... }
+                                        │
+                                        ▼
+                                  createStyles(colors) ──► styles object
+                                        │
+                                        ▼
+                                  CSS Variables (generateCSSVariables)
+                                        │
+                                        ▼
+                                  --terminal-bg ──► xterm.js theme (useTerminalTheme)
 
-ThemeProvider ──► useTheme() ──► { theme, styles, toggleTheme, themeName }
-                                        │
-                                        ▼
-                                  createStyles(colors)
-                                        │
-                                        ▼
-                                  styles object
-                                        │
-                                        ▼
-                                  CSS Variables (index.css)
-                                        │
-                                        ▼
-                                  --terminal-bg ──► xterm.js theme
+设计主题 (DesignTheme):
+  - 内置主题: Airbnb (dark/light), Linear (dark/light), Stripe (dark/light), Claude (dark/light)
+  - 每主题包含 tokens: { colors: {...}, spacing, radius, font }
+  - 主题色映射到 theme.colors.primary 等
 ```
 
 ## 6. ControlService 跨平台架构

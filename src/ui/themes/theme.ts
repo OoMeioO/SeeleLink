@@ -633,6 +633,7 @@ export function applyMorandi(
  * Uses perceived luminance formula (ITU-R BT.709).
  */
 export function textColorForBg(bg: string): string {
+  if (!bg) return '#FFFFFF';
   const hex = bg.replace('#', '');
   if (hex.length !== 6) return '#FFFFFF';
   const r = parseInt(hex.slice(0, 2), 16) / 255;

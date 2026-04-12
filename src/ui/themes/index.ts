@@ -1,7 +1,8 @@
 // Theme System Exports
 export { ThemeProvider, useTheme, useColors } from './ThemeProvider';
+export { DesignThemeGallery } from './DesignThemeGallery';
 export {
-  // Unified theme
+  // Unified theme (for reference)
   lightTheme, darkTheme, generateCSSVariables,
   type Theme,
   // Design tokens (shared)
@@ -9,8 +10,9 @@ export {
   Typography, Spacing, BorderRadius, Shadows, Transitions,
   // Old color palette (for App.tsx compatibility)
   colors, createStyles,
-  type ThemeColors, type ThemeName,
-  // Color scheme
-  MORANDI_SCHEMES, getMorandiScheme, applyMorandi, textColorForBg,
-  type MorandiScheme,
+  // Utility functions
+  textColorForBg,
 } from './theme';
+// DESIGN.md Theme types and built-in themes
+export type { DesignTheme, DesignThemeColors, DesignThemeSource, DesignThemeFont, DesignThemeSpacing, DesignThemeRadius } from './types';
+export { builtinDesignThemes } from './design-themes';

@@ -29,6 +29,7 @@ function getDeviceCommands(device: IRDevice, data: IRData): IRCommandDef[] {
 
 export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataChange }) => {
   const { theme } = useTheme();
+  const colors = theme.colors;
 
   // ── State ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<IRTab>('devices');
@@ -281,17 +282,17 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
 
   const btnStyle: React.CSSProperties = {
     padding: '6px 12px',
-    background: theme.bgTertiary,
-    color: theme.text,
-    border: `1px solid ${theme.border}`,
+    background: colors.bgTertiary,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
     borderRadius: 4,
     cursor: 'pointer',
     fontSize: 12,
   };
 
   const cardStyle: React.CSSProperties = {
-    background: theme.bgSecondary,
-    border: `1px solid ${theme.border}`,
+    background: colors.bgSecondary,
+    border: `1px solid ${colors.border}`,
     borderRadius: 6,
     padding: 12,
     marginBottom: 8,
@@ -313,8 +314,8 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
     return (
       <div>
         <div style={{ marginBottom: 12 }}>
-          <span style={{ fontWeight: 600, color: theme.text }}>{type?.name || '未知类型'}</span>
-          <span style={{ fontSize: 12, color: theme.textSecondary, marginLeft: 8 }}>
+          <span style={{ fontWeight: 600, color: colors.text }}>{type?.name || '未知类型'}</span>
+          <span style={{ fontSize: 12, color: colors.textSecondary, marginLeft: 8 }}>
             {device.connectionType === 'usb-serial' ? `串口: ${device.port}` : `ADB: ${device.adbDeviceId}`}
           </span>
         </div>
@@ -326,9 +327,9 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
               disabled={sending}
               style={{
                 padding: '10px 18px',
-                background: theme.bgTertiary,
-                color: theme.text,
-                border: `1px solid ${theme.border}`,
+                background: colors.bgTertiary,
+                color: colors.text,
+                border: `1px solid ${colors.border}`,
                 borderRadius: 6,
                 cursor: sending ? 'not-allowed' : 'pointer',
                 fontSize: 13,
@@ -342,7 +343,7 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
             </button>
           ))}
           {cmds.length === 0 && (
-            <div style={{ color: theme.textTertiary, fontSize: 12 }}>
+            <div style={{ color: colors.textTertiary, fontSize: 12 }}>
               该设备类型暂无命令，请到「指令库」添加
             </div>
           )}
@@ -358,17 +359,17 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
         return (
           <div style={{ display: 'flex', height: '100%' }}>
             {/* Left: Discovery */}
-            <div style={{ width: 300, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', background: theme.bgSecondary }}>
-              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${theme.border}` }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, color: theme.text }}>设备发现</div>
+            <div style={{ width: 300, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', background: colors.bgSecondary }}>
+              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}` }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, color: colors.text }}>设备发现</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <button onClick={scanAdbDevices} disabled={scanning} style={{ ...btnStyle, background: theme.primary, color: btnTextColor(theme.primary) }}>
+                  <button onClick={scanAdbDevices} disabled={scanning} style={{ ...btnStyle, background: colors.primary, color: btnTextColor(colors.primary) }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{scanning ? '...' : <><RefreshCw size={13} style={{ verticalAlign: 'middle' }} /> 扫描 ADB 设备</>}</span>
                   </button>
                   <button onClick={scanSerialPorts} style={{ ...btnStyle }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Cable size={13} style={{ verticalAlign: 'middle' }} /> 扫描串口</span>
                   </button>
-                  <button onClick={scanLanDevices} disabled={lanScanning} style={{ ...btnStyle, background: lanScanning ? theme.textTertiary : theme.success, color: btnTextColor(lanScanning ? theme.textTertiary : theme.success) }}>
+                  <button onClick={scanLanDevices} disabled={lanScanning} style={{ ...btnStyle, background: lanScanning ? colors.textTertiary : colors.success, color: btnTextColor(lanScanning ? colors.textTertiary : colors.success) }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Globe size={13} style={{ verticalAlign: 'middle' }} /> {lanScanning ? '扫描中...' : '局域网发现'}</span>
                   </button>
                 </div>
@@ -376,19 +377,19 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
 
               {/* ADB Devices */}
               {adbDevices.length > 0 && (
-                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}` }}>
-                  <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 6, fontWeight: 500 }}>🔗 ADB 设备</div>
+                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}` }}>
+                  <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontWeight: 500 }}>🔗 ADB 设备</div>
                   {adbDevices.map(id => {
                     const existing = data.devices.find(d => d.adbDeviceId === id);
                     return (
                       <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                        <span style={{ fontSize: 12, color: theme.text, fontFamily: 'monospace' }}>{id}</span>
+                        <span style={{ fontSize: 12, color: colors.text, fontFamily: 'monospace' }}>{id}</span>
                         {existing ? (
-                          <span style={{ fontSize: 10, color: theme.success }}>已添加</span>
+                          <span style={{ fontSize: 10, color: colors.success }}>已添加</span>
                         ) : (
                           <button
                             onClick={() => { scanAdbDevices(); setShowAddDevice(true); }}
-                            style={coloredBtn(theme.primary, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}
+                            style={coloredBtn(colors.primary, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}
                           >+ 添加</button>
                         )}
                       </div>
@@ -399,19 +400,19 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
 
               {/* Serial Ports */}
               {serialPorts.length > 0 && (
-                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}` }}>
-                  <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 6, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}><Cable size={11} style={{ verticalAlign: 'middle' }} /> 串口</div>
+                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}` }}>
+                  <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}><Cable size={11} style={{ verticalAlign: 'middle' }} /> 串口</div>
                   {serialPorts.map(port => {
                     const existing = data.devices.find(d => d.port === port);
                     return (
                       <div key={port} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                        <span style={{ fontSize: 12, color: theme.text, fontFamily: 'monospace' }}>{port}</span>
+                        <span style={{ fontSize: 12, color: colors.text, fontFamily: 'monospace' }}>{port}</span>
                         {existing ? (
-                          <span style={{ fontSize: 10, color: theme.success }}>已添加</span>
+                          <span style={{ fontSize: 10, color: colors.success }}>已添加</span>
                         ) : (
                           <button
                             onClick={() => { scanSerialPorts(); setShowAddDevice(true); }}
-                            style={coloredBtn(theme.primary, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}
+                            style={coloredBtn(colors.primary, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}
                           >+ 添加</button>
                         )}
                       </div>
@@ -422,19 +423,19 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
 
               {/* LAN Discovered */}
               {lanDiscovered.length > 0 && (
-                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}` }}>
-                  <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 6, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}><Globe size={11} style={{ verticalAlign: 'middle' }} /> 局域网</div>
+                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}` }}>
+                  <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}><Globe size={11} style={{ verticalAlign: 'middle' }} /> 局域网</div>
                   {lanDiscovered.map(id => {
                     const existing = data.devices.find(d => d.adbDeviceId === id);
                     return (
                       <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                        <span style={{ fontSize: 12, color: theme.text, fontFamily: 'monospace' }}>{id}</span>
+                        <span style={{ fontSize: 12, color: colors.text, fontFamily: 'monospace' }}>{id}</span>
                         {existing ? (
-                          <span style={{ fontSize: 10, color: theme.success }}>已添加</span>
+                          <span style={{ fontSize: 10, color: colors.success }}>已添加</span>
                         ) : (
                           <button
                             onClick={() => { setShowAddDevice(true); }}
-                            style={coloredBtn(theme.success, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}
+                            style={coloredBtn(colors.success, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}
                           >+ 连接</button>
                         )}
                       </div>
@@ -445,14 +446,14 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
 
               {/* LAN Scan Progress */}
               {lanScanProgress && lanScanning && (
-                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}`, fontSize: 11, color: theme.primary }}>
+                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}`, fontSize: 11, color: colors.primary }}>
                   <Loader size={11} style={{ verticalAlign: 'middle', animation: 'spin 1s linear infinite' }} /> {lanScanProgress}
                 </div>
               )}
 
               {/* Status */}
               {status && (
-                <div style={{ padding: '6px 16px', borderBottom: `1px solid ${theme.border}`, fontSize: 11, color: theme.textSecondary }}>
+                <div style={{ padding: '6px 16px', borderBottom: `1px solid ${colors.border}`, fontSize: 11, color: colors.textSecondary }}>
                   {status}
                 </div>
               )}
@@ -461,7 +462,7 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
               <div style={{ padding: '12px 16px', marginTop: 'auto' }}>
                 <button
                   onClick={() => setShowAddDevice(true)}
-                  style={coloredBtn(theme.primary, { width: '100%', padding: '8px 12px', fontSize: 13 })}
+                  style={coloredBtn(colors.primary, { width: '100%', padding: '8px 12px', fontSize: 13 })}
                 >
                   + 添加设备
                 </button>
@@ -471,12 +472,12 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
             {/* Right: Device List + Control */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {/* Device List */}
-              <div style={{ padding: 12, borderBottom: `1px solid ${theme.border}`, overflow: 'auto', maxHeight: 240 }}>
-                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8, fontWeight: 500 }}>
+              <div style={{ padding: 12, borderBottom: `1px solid ${colors.border}`, overflow: 'auto', maxHeight: 240 }}>
+                <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, fontWeight: 500 }}>
                   已配置设备 ({data.devices.length})
                 </div>
                 {data.devices.length === 0 ? (
-                  <div style={{ color: theme.textTertiary, fontSize: 12, textAlign: 'center', padding: 20 }}>
+                  <div style={{ color: colors.textTertiary, fontSize: 12, textAlign: 'center', padding: 20 }}>
                     暂无设备，请从左侧添加
                   </div>
                 ) : (
@@ -489,8 +490,8 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
                           onClick={() => setSelectedDeviceId(device.id)}
                           style={{
                             padding: '8px 14px',
-                            background: selectedDeviceId === device.id ? theme.primary : theme.bgTertiary,
-                            border: `1px solid ${selectedDeviceId === device.id ? theme.primary : theme.border}`,
+                            background: selectedDeviceId === device.id ? colors.primary : colors.bgTertiary,
+                            border: `1px solid ${selectedDeviceId === device.id ? colors.primary : colors.border}`,
                             borderRadius: 6,
                             cursor: 'pointer',
                             display: 'flex',
@@ -499,13 +500,13 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
                             minWidth: 120,
                           }}
                         >
-                          <div style={{ fontSize: 12, fontWeight: 500, color: btnTextColor(selectedDeviceId === device.id ? theme.primary : theme.bgTertiary) }}>{device.name}</div>
-                          <div style={{ fontSize: 10, color: selectedDeviceId === device.id ? 'rgba(255,255,255,0.8)' : theme.textSecondary }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: btnTextColor(selectedDeviceId === device.id ? colors.primary : colors.bgTertiary) }}>{device.name}</div>
+                          <div style={{ fontSize: 10, color: selectedDeviceId === device.id ? 'rgba(255,255,255,0.8)' : colors.textSecondary }}>
                             {type?.name || '未分类'} • {device.connectionType === 'usb-serial' ? '串口' : 'ADB'}
                           </div>
                           <button
                             onClick={(e) => { e.stopPropagation(); deleteDevice(device.id); }}
-                            style={coloredBtn(theme.error, { fontSize: 10, padding: '1px 6px', borderRadius: 3, marginTop: 4, alignSelf: 'flex-start' })}
+                            style={coloredBtn(colors.error, { fontSize: 10, padding: '1px 6px', borderRadius: 3, marginTop: 4, alignSelf: 'flex-start' })}
                           >删除</button>
                         </div>
                       );
@@ -519,7 +520,7 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
                 {selectedDevice ? (
                   renderCommandsPanel(selectedDevice)
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: theme.textTertiary }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.textTertiary }}>
                     点击左侧设备进行控制
                   </div>
                 )}
@@ -533,27 +534,27 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
           <div style={{ padding: 20, overflow: 'auto', height: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <h3 style={{ margin: 0, color: theme.text }}>指令库</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: theme.textSecondary }}>
+                <h3 style={{ margin: 0, color: colors.text }}>指令库</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: colors.textSecondary }}>
                   全局命令库，按设备类型分组。设备关联类型后自动获得对应命令。
                 </p>
               </div>
-              <button onClick={() => setShowAddCommand(true)} style={coloredBtn(theme.primary)}>+ 添加指令</button>
+              <button onClick={() => setShowAddCommand(true)} style={coloredBtn(colors.primary)}>+ 添加指令</button>
             </div>
             {data.deviceTypes.map(dt => {
               const cmds = data.commands.filter(c => c.deviceTypeId === dt.id || !c.deviceTypeId);
               if (cmds.length === 0) return null;
               return (
                 <div key={dt.id} style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: theme.textSecondary, marginBottom: 8 }}>{dt.name} ({dt.category})</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: colors.textSecondary, marginBottom: 8 }}>{dt.name} ({dt.category})</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {cmds.map(cmd => (
                       <div
                         key={cmd.id}
                         style={{
                           padding: '8px 14px',
-                          background: theme.bgSecondary,
-                          border: `1px solid ${theme.border}`,
+                          background: colors.bgSecondary,
+                          border: `1px solid ${colors.border}`,
                           borderRadius: 6,
                           display: 'flex',
                           flexDirection: 'column',
@@ -561,11 +562,11 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
                           minWidth: 140,
                         }}
                       >
-                        <div style={{ fontSize: 13, fontWeight: 500, color: theme.text }}>{cmd.name}</div>
-                        <div style={{ fontSize: 10, color: theme.textSecondary }}>{cmd.description || cmd.pattern || '—'}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: colors.text }}>{cmd.name}</div>
+                        <div style={{ fontSize: 10, color: colors.textSecondary }}>{cmd.description || cmd.pattern || '—'}</div>
                         <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                          <button onClick={() => setEditingCommand(cmd)} style={{ fontSize: 10, padding: '2px 8px', background: theme.bgTertiary, color: theme.text, border: 'none', borderRadius: 3, cursor: 'pointer' }}>编辑</button>
-                          <button onClick={() => deleteCommand(cmd.id)} style={coloredBtn(theme.error, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}>删除</button>
+                          <button onClick={() => setEditingCommand(cmd)} style={{ fontSize: 10, padding: '2px 8px', background: colors.bgTertiary, color: colors.text, border: 'none', borderRadius: 3, cursor: 'pointer' }}>编辑</button>
+                          <button onClick={() => deleteCommand(cmd.id)} style={coloredBtn(colors.error, { fontSize: 10, padding: '2px 8px', borderRadius: 3 })}>删除</button>
                         </div>
                       </div>
                     ))}
@@ -581,43 +582,43 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
           <div style={{ padding: 20, overflow: 'auto', height: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <h3 style={{ margin: 0, color: theme.text }}>指令序列</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: theme.textSecondary }}>
+                <h3 style={{ margin: 0, color: colors.text }}>指令序列</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: colors.textSecondary }}>
                   创建序列，配置多个命令的执行顺序和间隔。
                 </p>
               </div>
-              <button onClick={() => setShowAddSequence(true)} style={coloredBtn(theme.primary)}>+ 创建序列</button>
+              <button onClick={() => setShowAddSequence(true)} style={coloredBtn(colors.primary)}>+ 创建序列</button>
             </div>
             {data.sequences.length === 0 ? (
-              <div style={{ textAlign: 'center', color: theme.textTertiary, padding: 40, fontSize: 13 }}>暂无序列</div>
+              <div style={{ textAlign: 'center', color: colors.textTertiary, padding: 40, fontSize: 13 }}>暂无序列</div>
             ) : (
               data.sequences.map(seq => {
                 const device = data.devices.find(d => d.id === seq.deviceId);
                 return (
                   <div key={seq.id} style={cardStyle}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <div style={{ fontWeight: 500, color: theme.text }}>{seq.name}</div>
+                      <div style={{ fontWeight: 500, color: colors.text }}>{seq.name}</div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         {device && (
                           <button
                             onClick={() => sendSequence(seq, device)}
                             disabled={sending}
-                            style={{ ...btnStyle, background: theme.success, color: btnTextColor(theme.success), opacity: sending ? 0.5 : 1 }}
+                            style={{ ...btnStyle, background: colors.success, color: btnTextColor(colors.success), opacity: sending ? 0.5 : 1 }}
                           ><Play size={12} style={{ marginRight: 4 }} />执行</button>
                         )}
-                        <button onClick={() => deleteSequence(seq.id)} style={coloredBtn(theme.error, { padding: '6px 12px', fontSize: 12 })}>删除</button>
+                        <button onClick={() => deleteSequence(seq.id)} style={coloredBtn(colors.error, { padding: '6px 12px', fontSize: 12 })}>删除</button>
                       </div>
                     </div>
-                    <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8 }}>
                       设备: {device?.name || '未知'}
                     </div>
-                    <div style={{ fontSize: 11, color: theme.textTertiary }}>
+                    <div style={{ fontSize: 11, color: colors.textTertiary }}>
                       {seq.steps.map((step, i) => {
                         const cmd = data.commands.find(c => c.id === step.commandId);
                         return (
                           <span key={i}>
                             {cmd?.name || '未知'}
-                            {step.delayMs > 0 && <span style={{ color: theme.primary }}> (+{step.delayMs}ms)</span>}
+                            {step.delayMs > 0 && <span style={{ color: colors.primary }}> (+{step.delayMs}ms)</span>}
                             {i < seq.steps.length - 1 && ' → '}
                           </span>
                         );
@@ -635,12 +636,12 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
           <div style={{ padding: 20, overflow: 'auto', height: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <h3 style={{ margin: 0, color: theme.text }}>类型配置</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: theme.textSecondary }}>
+                <h3 style={{ margin: 0, color: colors.text }}>类型配置</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: colors.textSecondary }}>
                   设备类型定义，每个类型关联一组默认命令。
                 </p>
               </div>
-              <button onClick={() => setShowAddType(true)} style={coloredBtn(theme.primary)}>+ 添加类型</button>
+              <button onClick={() => setShowAddType(true)} style={coloredBtn(colors.primary)}>+ 添加类型</button>
             </div>
             {data.deviceTypes.map(dt => {
               const cmdCount = data.commands.filter(c => c.deviceTypeId === dt.id).length;
@@ -649,13 +650,13 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
                 <div key={dt.id} style={cardStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                     <div>
-                      <div style={{ fontWeight: 500, color: theme.text }}>{dt.name}</div>
-                      <div style={{ fontSize: 11, color: theme.textSecondary }}>{dt.category} • {cmdCount} 个命令 • {deviceCount} 个设备</div>
-                      {dt.description && <div style={{ fontSize: 11, color: theme.textTertiary, marginTop: 2 }}>{dt.description}</div>}
+                      <div style={{ fontWeight: 500, color: colors.text }}>{dt.name}</div>
+                      <div style={{ fontSize: 11, color: colors.textSecondary }}>{dt.category} • {cmdCount} 个命令 • {deviceCount} 个设备</div>
+                      {dt.description && <div style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2 }}>{dt.description}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => setEditingType(dt)} style={{ ...btnStyle, fontSize: 11 }}>编辑</button>
-                      <button onClick={() => deleteType(dt.id)} style={coloredBtn(theme.error, { fontSize: 11, padding: '6px 12px' })}>删除</button>
+                      <button onClick={() => deleteType(dt.id)} style={coloredBtn(colors.error, { fontSize: 11, padding: '6px 12px' })}>删除</button>
                     </div>
                   </div>
                 </div>
@@ -667,19 +668,19 @@ export const IRPage: React.FC<IRPageProps> = ({ irData: initialData, onIrDataCha
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: theme.bg, color: theme.text }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: colors.bg, color: colors.text }}>
       {/* Tab Bar */}
-      <div style={{ display: 'flex', borderBottom: `1px solid ${theme.border}`, background: theme.bgSecondary }}>
+      <div style={{ display: 'flex', borderBottom: `1px solid ${colors.border}`, background: colors.bgSecondary }}>
         {tabItems.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
               padding: '10px 20px',
-              background: activeTab === tab.id ? theme.primary : 'transparent',
-              color: theme.text,
+              background: activeTab === tab.id ? colors.primary : 'transparent',
+              color: colors.text,
               border: 'none',
-              borderBottom: activeTab === tab.id ? `2px solid ${theme.primary}` : '2px solid transparent',
+              borderBottom: activeTab === tab.id ? `2px solid ${colors.primary}` : '2px solid transparent',
               cursor: 'pointer',
               fontSize: 13,
               display: 'flex',
@@ -762,6 +763,7 @@ function AddDeviceModal({ data, adbDevices, serialPorts, lanDiscovered, onAdd, o
   onClose: () => void;
 }) {
   const { theme } = useTheme();
+  const colors = theme.colors;
   const [name, setName] = useState('');
   const [connType, setConnType] = useState<'usb-serial' | 'usb-adb' | 'network-adb'>('usb-adb');
   const [port, setPort] = useState('');
@@ -804,14 +806,14 @@ function AddDeviceModal({ data, adbDevices, serialPorts, lanDiscovered, onAdd, o
         </select>
       </Field>
       <ModalFooter>
-        <button onClick={onClose} style={{ ...btnBase(theme), background: theme.bgTertiary }}>取消</button>
+        <button onClick={onClose} style={{ ...btnBase(theme), background: colors.bgTertiary }}>取消</button>
         <button
           onClick={() => {
             if (!name.trim()) return;
             onAdd({ id: '', name: name.trim(), connectionType: connType, port: connType === 'usb-serial' ? port : undefined, adbDeviceId: (connType === 'usb-adb' || connType === 'network-adb') ? adbDeviceId : undefined, deviceTypeId });
           }}
           disabled={!name.trim() || (connType !== 'usb-serial' && !adbDeviceId) || (connType === 'usb-serial' && !port)}
-          style={coloredBtn(theme.primary, { padding: '7px 16px', fontSize: 13 })}
+          style={coloredBtn(colors.primary, { padding: '7px 16px', fontSize: 13 })}
         >添加</button>
       </ModalFooter>
     </Modal>
@@ -825,6 +827,7 @@ function AddCommandModal({ deviceTypes, initial, onAdd, onClose }: {
   onClose: () => void;
 }) {
   const { theme } = useTheme();
+  const colors = theme.colors;
   const [name, setName] = useState(initial?.name || '');
   const [category, setCategory] = useState(initial?.category || '');
   const [deviceTypeId, setDeviceTypeId] = useState(initial?.deviceTypeId || '');
@@ -878,8 +881,8 @@ function AddCommandModal({ deviceTypes, initial, onAdd, onClose }: {
       <Field label="重复次数"><input value={repeat} onChange={e => setRepeat(e.target.value)} placeholder="1" style={inputStyle(theme)} /></Field>
       <Field label="说明"><input value={description} onChange={e => setDescription(e.target.value)} placeholder="可选说明" style={inputStyle(theme)} /></Field>
       <ModalFooter>
-        <button onClick={onClose} style={{ ...btnBase(theme), background: theme.bgTertiary }}>取消</button>
-        <button onClick={handleAdd} disabled={!name.trim() || !category.trim()} style={coloredBtn(theme.primary, { padding: '7px 16px', fontSize: 13 })}>{initial ? '保存' : '添加'}</button>
+        <button onClick={onClose} style={{ ...btnBase(theme), background: colors.bgTertiary }}>取消</button>
+        <button onClick={handleAdd} disabled={!name.trim() || !category.trim()} style={coloredBtn(colors.primary, { padding: '7px 16px', fontSize: 13 })}>{initial ? '保存' : '添加'}</button>
       </ModalFooter>
     </Modal>
   );
@@ -891,6 +894,7 @@ function AddTypeModal({ initial, onAdd, onClose }: {
   onClose: () => void;
 }) {
   const { theme } = useTheme();
+  const colors = theme.colors;
   const [name, setName] = useState(initial?.name || '');
   const [category, setCategory] = useState(initial?.category || '');
   const [description, setDescription] = useState(initial?.description || '');
@@ -906,8 +910,8 @@ function AddTypeModal({ initial, onAdd, onClose }: {
       </Field>
       <Field label="说明"><input value={description} onChange={e => setDescription(e.target.value)} placeholder="可选说明" style={inputStyle(theme)} /></Field>
       <ModalFooter>
-        <button onClick={onClose} style={{ ...btnBase(theme), background: theme.bgTertiary }}>取消</button>
-        <button onClick={() => { if (name.trim() && category.trim()) onAdd({ id: initial?.id || '', name: name.trim(), category: category.trim(), description: description || undefined }); }} disabled={!name.trim() || !category.trim()} style={coloredBtn(theme.primary, { padding: '7px 16px', fontSize: 13 })}>{initial ? '保存' : '添加'}</button>
+        <button onClick={onClose} style={{ ...btnBase(theme), background: colors.bgTertiary }}>取消</button>
+        <button onClick={() => { if (name.trim() && category.trim()) onAdd({ id: initial?.id || '', name: name.trim(), category: category.trim(), description: description || undefined }); }} disabled={!name.trim() || !category.trim()} style={coloredBtn(colors.primary, { padding: '7px 16px', fontSize: 13 })}>{initial ? '保存' : '添加'}</button>
       </ModalFooter>
     </Modal>
   );
@@ -920,6 +924,7 @@ function AddSequenceModal({ devices, commands, onAdd, onClose }: {
   onClose: () => void;
 }) {
   const { theme } = useTheme();
+  const colors = theme.colors;
   const [name, setName] = useState('');
   const [deviceId, setDeviceId] = useState(devices[0]?.id || '');
   const [steps, setSteps] = useState<{ commandId: string; delayMs: number }[]>([]);
@@ -956,14 +961,14 @@ function AddSequenceModal({ devices, commands, onAdd, onClose }: {
               {commands.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <input type="number" value={step.delayMs} onChange={e => updateStep(i, 'delayMs', parseInt(e.target.value) || 0)} placeholder="延迟ms" style={{ ...inputStyle(theme), flex: 1 }} />
-            <button onClick={() => removeStep(i)} style={coloredBtn(theme.error, { padding: '4px 10px', fontSize: 13 })}>×</button>
+            <button onClick={() => removeStep(i)} style={coloredBtn(colors.error, { padding: '4px 10px', fontSize: 13 })}>×</button>
           </div>
         ))}
         <button onClick={addStep} style={{ ...btnBase(theme), marginTop: 4 }}>+ 添加步骤</button>
       </Field>
       <ModalFooter>
-        <button onClick={onClose} style={{ ...btnBase(theme), background: theme.bgTertiary }}>取消</button>
-        <button onClick={handleSave} disabled={!name.trim() || !deviceId || steps.length === 0} style={coloredBtn(theme.primary, { padding: '7px 16px', fontSize: 13 })}>创建</button>
+        <button onClick={onClose} style={{ ...btnBase(theme), background: colors.bgTertiary }}>取消</button>
+        <button onClick={handleSave} disabled={!name.trim() || !deviceId || steps.length === 0} style={coloredBtn(colors.primary, { padding: '7px 16px', fontSize: 13 })}>创建</button>
       </ModalFooter>
     </Modal>
   );
@@ -977,9 +982,9 @@ function Modal({ title, onClose, theme, children }: { title: string; onClose: ()
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
       onClick={onClose}>
-      <div style={{ background: theme.bgSecondary, border: `1px solid ${theme.border}`, borderRadius: 8, padding: 20, width: 420, maxHeight: '80vh', overflow: 'auto' }}
+      <div style={{ background: colors.bgSecondary, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 20, width: 420, maxHeight: '80vh', overflow: 'auto' }}
         onClick={e => e.stopPropagation()}>
-        <div style={{ fontWeight: 600, fontSize: 15, color: theme.text, marginBottom: 16 }}>{title}</div>
+        <div style={{ fontWeight: 600, fontSize: 15, color: colors.text, marginBottom: 16 }}>{title}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
       </div>
     </div>
@@ -1007,9 +1012,9 @@ function inputStyle(theme: Theme): React.CSSProperties {
   return {
     width: '100%',
     padding: '8px 10px',
-    background: theme.bg,
-    color: theme.text,
-    border: `1px solid ${theme.border}`,
+    background: colors.bg,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
     borderRadius: 4,
     fontSize: 13,
     outline: 'none',
@@ -1020,8 +1025,8 @@ function inputStyle(theme: Theme): React.CSSProperties {
 function btnBase(theme: Theme): React.CSSProperties {
   return {
     padding: '7px 16px',
-    color: theme.text,
-    border: `1px solid ${theme.border}`,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
     borderRadius: 4,
     cursor: 'pointer',
     fontSize: 13,

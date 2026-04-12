@@ -71,6 +71,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
   setAndroidActiveTab: setActiveTab,
 }) => {
   const { theme } = useTheme();
+  const colors = theme.colors;
   const [usbDevices, setUsbDevices] = useState<AndroidDevice[]>([]);
   const [networkDevices, setNetworkDevices] = useState<AndroidDevice[]>([]);
   const [connecting, setConnecting] = useState(false);
@@ -545,9 +546,9 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
 
   const btnStyle: React.CSSProperties = {
     padding: '6px 12px',
-    background: theme.bgTertiary,
-    color: theme.text,
-    border: `1px solid ${theme.border}`,
+    background: colors.bgTertiary,
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
     borderRadius: 4,
     cursor: 'pointer',
     fontSize: 12,
@@ -568,13 +569,13 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
         key={device.id}
         style={{
           padding: '8px 12px',
-          background: theme.surface,
+          background: colors.surface,
           borderRadius: 4,
           marginBottom: 6,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          border: isUnauthorized ? `1px solid ${theme.error}` : isDiscovered ? `1px solid ${theme.success}` : `1px solid ${theme.border}`,
+          border: isUnauthorized ? `1px solid ${colors.error}` : isDiscovered ? `1px solid ${colors.success}` : `1px solid ${colors.border}`,
           opacity: device.status === 'disconnected' ? 0.5 : 1,
         }}
       >
@@ -583,29 +584,29 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
             <span style={{ fontSize: 14 }}>
               {source === 'usb' ? <Cable size={14} style={{ verticalAlign: 'middle' }} /> : isDiscovered ? <Plus size={14} style={{ verticalAlign: 'middle' }} /> : isUnauthorized ? <AlertTriangle size={14} style={{ verticalAlign: 'middle' }} /> : <Wifi size={14} style={{ verticalAlign: 'middle' }} />}
             </span>
-            <span style={{ fontWeight: 500, color: theme.text, fontSize: 13 }}>
+            <span style={{ fontWeight: 500, color: colors.text, fontSize: 13 }}>
               {device.model || (device.type === 'network' ? 'Android 设备' : 'Unknown')}
             </span>
             {device.version && (
-              <span style={{ fontSize: 10, color: theme.textSecondary, background: theme.bgTertiary, padding: '1px 5px', borderRadius: 3 }}>
+              <span style={{ fontSize: 10, color: colors.textSecondary, background: colors.bgTertiary, padding: '1px 5px', borderRadius: 3 }}>
                 {device.version}
               </span>
             )}
           </div>
-          <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2, paddingLeft: 24 }}>
+          <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2, paddingLeft: 24 }}>
             <span>{displayId}</span>
             {device.manufacturer && (
               <span style={{ marginLeft: 8 }}>{device.manufacturer}</span>
             )}
           </div>
           {isUnauthorized && (
-            <div style={{ fontSize: 11, color: theme.error, marginTop: 2, paddingLeft: 24 }}>
+            <div style={{ fontSize: 11, color: colors.error, marginTop: 2, paddingLeft: 24 }}>
               <AlertTriangle size={11} style={{ verticalAlign: 'middle', marginRight: 4 }} />请在设备上授权此电脑
             </div>
           )}
           {isDiscovered && (
-            <div style={{ fontSize: 11, color: theme.success, marginTop: 2, paddingLeft: 24 }}>
-              <span style={{ color: theme.success }}>✓</span> 点击连接
+            <div style={{ fontSize: 11, color: colors.success, marginTop: 2, paddingLeft: 24 }}>
+              <span style={{ color: colors.success }}>✓</span> 点击连接
             </div>
           )}
         </div>
@@ -614,8 +615,8 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
           disabled={connecting || isUnauthorized}
           style={{
             padding: '4px 12px',
-            background: isUnauthorized ? theme.textTertiary : theme.primary,
-            color: whiteTxt(isUnauthorized ? theme.textTertiary : theme.primary),
+            background: isUnauthorized ? colors.textTertiary : colors.primary,
+            color: whiteTxt(isUnauthorized ? colors.textTertiary : colors.primary),
             border: 'none',
             borderRadius: 4,
             cursor: (connecting || isUnauthorized) ? 'not-allowed' : 'pointer',
@@ -633,19 +634,19 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
   const unauthorizedCount = lanDiscoveredDevices.filter(d => d.status === 'unauthorized').length;
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: theme.bg, color: theme.text }}>
+    <div style={{ display: 'flex', height: '100%', background: colors.bg, color: colors.text }}>
       {/* ── Left Sidebar ── */}
-      <div style={{ width: 300, borderRight: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', background: theme.bgSecondary }}>
+      <div style={{ width: 300, borderRight: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', background: colors.bgSecondary }}>
 
         {/* Header */}
-        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.border}` }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10, color: theme.text, display: 'flex', alignItems: 'center', gap: 6 }}><Smartphone size={14} style={{ verticalAlign: 'middle' }} /> Android Devices</div>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}` }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10, color: colors.text, display: 'flex', alignItems: 'center', gap: 6 }}><Smartphone size={14} style={{ verticalAlign: 'middle' }} /> Android Devices</div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={scanDevices}
               disabled={scanning}
               style={{
-                flex: 1, padding: '5px 8px', background: theme.primary, color: whiteTxt(theme.primary),
+                flex: 1, padding: '5px 8px', background: colors.primary, color: whiteTxt(colors.primary),
                 border: 'none', borderRadius: 4, cursor: scanning ? 'not-allowed' : 'pointer', fontSize: 12,
               }}
             >
@@ -658,8 +659,8 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
               disabled={lanScanning}
               style={{
                 flex: 1, padding: '5px 8px',
-                background: lanScanning ? theme.textTertiary : theme.success,
-                color: whiteTxt(lanScanning ? theme.textTertiary : theme.success), border: 'none', borderRadius: 4,
+                background: lanScanning ? colors.textTertiary : colors.success,
+                color: whiteTxt(lanScanning ? colors.textTertiary : colors.success), border: 'none', borderRadius: 4,
                 cursor: lanScanning ? 'not-allowed' : 'pointer', fontSize: 12,
               }}
             >
@@ -672,13 +673,13 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
 
         {/* Local IP info */}
         {localIps.length > 0 && (
-          <div style={{ padding: '8px 16px', borderBottom: `1px solid ${theme.border}`, background: theme.bgTertiary }}>
-            <div style={{ fontSize: 11, color: theme.textTertiary, marginBottom: 4 }}>本机 IP</div>
+          <div style={{ padding: '8px 16px', borderBottom: `1px solid ${colors.border}`, background: colors.bgTertiary }}>
+            <div style={{ fontSize: 11, color: colors.textTertiary, marginBottom: 4 }}>本机 IP</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {localIps.map((iface, i) => (
                 <span
                   key={i}
-                  style={{ fontSize: 11, color: theme.primary, background: theme.bgSelected, padding: '2px 8px', borderRadius: 3 }}
+                  style={{ fontSize: 11, color: colors.primary, background: colors.bgSelected, padding: '2px 8px', borderRadius: 3 }}
                   title={`${iface.name} (${iface.netmask})`}
                 >
                   {iface.ip}
@@ -691,9 +692,9 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
         {/* LAN Scan progress */}
         {lanScanProgress && (
           <div style={{
-            padding: '6px 16px', borderBottom: `1px solid ${theme.border}`,
-            background: theme.bgTertiary,
-            fontSize: 11, color: theme.primary,
+            padding: '6px 16px', borderBottom: `1px solid ${colors.border}`,
+            background: colors.bgTertiary,
+            fontSize: 11, color: colors.primary,
           }}>
             {lanScanning && <Loader size={11} style={{ verticalAlign: 'middle', marginRight: 6, animation: 'spin 1s linear infinite' }} />}
             {lanScanProgress}
@@ -707,14 +708,14 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
           {lanDiscoveredDevices.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingLeft: 4 }}>
-                <span style={{ fontSize: 12, color: theme.success, display: 'flex', alignItems: 'center', gap: 4 }}><Plus size={12} style={{ verticalAlign: 'middle' }} />发现的设备</span>
+                <span style={{ fontSize: 12, color: colors.success, display: 'flex', alignItems: 'center', gap: 4 }}><Plus size={12} style={{ verticalAlign: 'middle' }} />发现的设备</span>
                 {discoveredCount > 0 && (
-                  <span style={{ fontSize: 10, background: theme.success, color: '#FFFFFF', padding: '1px 6px', borderRadius: 8 }}>
+                  <span style={{ fontSize: 10, background: colors.success, color: '#FFFFFF', padding: '1px 6px', borderRadius: 8 }}>
                     {discoveredCount}
                   </span>
                 )}
                 {unauthorizedCount > 0 && (
-                  <span style={{ fontSize: 10, background: theme.warning, color: '#000', padding: '1px 6px', borderRadius: 8 }}>
+                  <span style={{ fontSize: 10, background: colors.warning, color: '#000', padding: '1px 6px', borderRadius: 8 }}>
                     {unauthorizedCount} 待授权
                   </span>
                 )}
@@ -726,7 +727,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
           {/* USB Devices */}
           {usbDevices.length > 0 && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Cable size={12} style={{ verticalAlign: 'middle' }} /> USB 设备 ({usbDevices.length})
               </div>
               {usbDevices.map(d => renderDeviceItem(d, 'usb'))}
@@ -736,7 +737,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
           {/* WiFi (paired) Devices */}
           {networkDevices.length > 0 && (
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Wifi size={12} style={{ verticalAlign: 'middle' }} /> WiFi 已配对 ({networkDevices.length})
               </div>
               {networkDevices.map(d => renderDeviceItem(d, 'network'))}
@@ -745,10 +746,10 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
 
           {/* Empty state */}
           {usbDevices.length === 0 && networkDevices.length === 0 && lanDiscoveredDevices.length === 0 && !scanning && !lanScanning && (
-            <div style={{ textAlign: 'center', color: theme.textTertiary, padding: 20 }}>
+            <div style={{ textAlign: 'center', color: colors.textTertiary, padding: 20 }}>
               <Smartphone size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
-              <div style={{ fontSize: 13, marginBottom: 4, color: theme.textSecondary }}>未发现设备</div>
-              <div style={{ fontSize: 11, color: theme.textTertiary, marginTop: 4 }}>
+              <div style={{ fontSize: 13, marginBottom: 4, color: colors.textSecondary }}>未发现设备</div>
+              <div style={{ fontSize: 11, color: colors.textTertiary, marginTop: 4 }}>
                 1. 点击「局域网发现」扫描同局域网设备<br />
                 2. 或使用 USB 连接并开启调试
               </div>
@@ -756,8 +757,8 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
           )}
 
           {/* Manual IP Connect */}
-          <div style={{ marginTop: 16, borderTop: `1px solid ${theme.border}`, paddingTop: 12 }}>
-            <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8, paddingLeft: 4 }}>
+          <div style={{ marginTop: 16, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
+            <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, paddingLeft: 4 }}>
               <Plus size={12} /> 手动IP连接
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -768,8 +769,8 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                 onKeyDown={(e) => e.key === 'Enter' && handleManualConnect()}
                 placeholder="192.168.1.100:5555"
                 style={{
-                  flex: 1, padding: '6px 8px', background: theme.surface,
-                  border: `1px solid ${theme.borderHover}`, borderRadius: 4, color: theme.text, fontSize: 12,
+                  flex: 1, padding: '6px 8px', background: colors.surface,
+                  border: `1px solid ${colors.borderHover}`, borderRadius: 4, color: colors.text, fontSize: 12,
                 }}
               />
               <button
@@ -777,15 +778,15 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                 disabled={connecting || !manualIp.trim()}
                 style={{
                   padding: '6px 12px',
-                  background: connecting ? theme.textTertiary : theme.success,
-                  color: whiteTxt(connecting ? theme.textTertiary : theme.success), border: 'none', borderRadius: 4,
+                  background: connecting ? colors.textTertiary : colors.success,
+                  color: whiteTxt(connecting ? colors.textTertiary : colors.success), border: 'none', borderRadius: 4,
                   cursor: connecting || !manualIp.trim() ? 'not-allowed' : 'pointer', fontSize: 12,
                 }}
               >
                 连接
               </button>
             </div>
-            <div style={{ fontSize: 10, color: theme.textTertiary, marginTop: 4, paddingLeft: 4 }}>
+            <div style={{ fontSize: 10, color: colors.textTertiary, marginTop: 4, paddingLeft: 4 }}>
               输入IP:端口，默认 :5555
             </div>
           </div>
@@ -793,7 +794,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
 
         {/* Error Display */}
         {error && (
-          <div style={{ padding: '8px 12px', background: theme.bgTertiary, borderTop: `1px solid ${theme.error}`, fontSize: 11, color: theme.error }}>
+          <div style={{ padding: '8px 12px', background: colors.bgTertiary, borderTop: `1px solid ${colors.error}`, fontSize: 11, color: colors.error }}>
             <AlertTriangle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />{error}
           </div>
         )}
@@ -805,7 +806,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
           <>
             {/* Tab Bar */}
             <div style={{
-              padding: '8px 12px', background: theme.bgSecondary, borderBottom: `1px solid ${theme.border}`,
+              padding: '8px 12px', background: colors.bgSecondary, borderBottom: `1px solid ${colors.border}`,
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
               {tabs.map(tab => (
@@ -814,10 +815,10 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                   onClick={() => setActiveTab(tab)}
                   style={{
                     padding: '4px 12px',
-                    background: activeTab.id === tab.id ? theme.primary : theme.bgTertiary,
+                    background: activeTab.id === tab.id ? colors.primary : colors.bgTertiary,
                     borderRadius: 4, cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
-                    color: theme.text,
+                    color: colors.text,
                   }}
                 >
                   <span style={{ display: 'flex', alignItems: 'center' }}>{tab.device.type === 'usb' ? <Cable size={13} style={{ verticalAlign: 'middle' }} /> : <Wifi size={13} style={{ verticalAlign: 'middle' }} />}</span>
@@ -834,14 +835,14 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
 
             {/* Controls */}
             <div style={{
-              padding: '8px 12px', background: theme.bgSecondary, borderBottom: `1px solid ${theme.border}`,
+              padding: '8px 12px', background: colors.bgSecondary, borderBottom: `1px solid ${colors.border}`,
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
               <button
                 onClick={() => refreshPageInfo(activeTab)}
                 disabled={loading}
                 style={{
-                  padding: '6px 12px', background: theme.primary, color: whiteTxt(theme.primary),
+                  padding: '6px 12px', background: colors.primary, color: whiteTxt(colors.primary),
                   border: 'none', borderRadius: 4, cursor: loading ? 'not-allowed' : 'pointer',
                 }}
               >
@@ -850,7 +851,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
               <select
                 value={refreshInterval}
                 onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                style={{ padding: 6, background: theme.bgTertiary, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 4 }}
+                style={{ padding: 6, background: colors.bgTertiary, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: 4 }}
               >
                 <option value={0}>不自动刷新</option>
                 <option value={1000}>1s</option>
@@ -858,7 +859,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                 <option value={5000}>5s</option>
                 <option value={10000}>10s</option>
               </select>
-              <span style={{ color: theme.textTertiary, fontSize: 12, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: colors.textTertiary, fontSize: 12, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {activeTab.device.type === 'usb' ? <Cable size={13} style={{ verticalAlign: 'middle' }} /> : <Wifi size={13} style={{ verticalAlign: 'middle' }} />} {activeTab.deviceId}
               </span>
             </div>
@@ -878,12 +879,12 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                   onClick={handleImageClick}
                   style={{
                     maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
-                    cursor: 'crosshair', border: `1px solid ${theme.border}`,
+                    cursor: 'crosshair', border: `1px solid ${colors.border}`,
                   }}
                   alt="Device screenshot"
                 />
               ) : (
-                <div style={{ color: theme.textTertiary }}>
+                <div style={{ color: colors.textTertiary }}>
                   {loading ? '正在截屏...' : '无截图'}
                 </div>
               )}
@@ -891,7 +892,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
 
             {/* Navigation D-pad + quick actions */}
             <div style={{
-              padding: '8px 12px', background: theme.bgSecondary, borderTop: `1px solid ${theme.border}`,
+              padding: '8px 12px', background: colors.bgSecondary, borderTop: `1px solid ${colors.border}`,
               display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'center',
             }}>
               {/* D-pad: up / left / confirm / right / down */}
@@ -903,7 +904,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                   onClick={async () => {
                     try { await execAdb(['-s', activeTab.deviceId, 'shell', 'input', 'keyevent', '19']); refreshPageInfo(activeTab); } catch {}
                   }}
-                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.primary, color: whiteTxt(theme.primary) }}
+                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.primary, color: whiteTxt(colors.primary) }}
                   title="上"
                 ><ArrowUp size={16} /></button>
                 <div />
@@ -913,7 +914,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                   onClick={async () => {
                     try { await execAdb(['-s', activeTab.deviceId, 'shell', 'input', 'keyevent', '21']); refreshPageInfo(activeTab); } catch {}
                   }}
-                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.primary, color: whiteTxt(theme.primary) }}
+                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.primary, color: whiteTxt(colors.primary) }}
                   title="左"
                 ><ArrowLeft size={16} /></button>
                 <button
@@ -921,7 +922,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                   onClick={async () => {
                     try { await execAdb(['-s', activeTab.deviceId, 'shell', 'input', 'keyevent', '23']); refreshPageInfo(activeTab); } catch {}
                   }}
-                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.success, color: whiteTxt(theme.success) }}
+                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.success, color: whiteTxt(colors.success) }}
                   title="确认 (DPAD_CENTER)"
                 ><CornerDownLeft size={16} /></button>
                 <button
@@ -929,7 +930,7 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                   onClick={async () => {
                     try { await execAdb(['-s', activeTab.deviceId, 'shell', 'input', 'keyevent', '22']); refreshPageInfo(activeTab); } catch {}
                   }}
-                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.primary, color: whiteTxt(theme.primary) }}
+                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.primary, color: whiteTxt(colors.primary) }}
                   title="右"
                 ><ArrowRight size={16} /></button>
                 {/* row 3 */}
@@ -939,18 +940,18 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
                   onClick={async () => {
                     try { await execAdb(['-s', activeTab.deviceId, 'shell', 'input', 'keyevent', '20']); refreshPageInfo(activeTab); } catch {}
                   }}
-                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.primary, color: whiteTxt(theme.primary) }}
+                  style={{ ...btnStyle, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.primary, color: whiteTxt(colors.primary) }}
                   title="下"
                 ><ArrowDown size={16} /></button>
                 <div />
               </div>
 
               {/* Divider */}
-              <div style={{ width: 1, height: 60, background: theme.border }} />
+              <div style={{ width: 1, height: 60, background: colors.border }} />
 
               {/* Swipe buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ fontSize: 10, color: theme.textTertiary, textAlign: 'center', marginBottom: 2 }}>滑动</div>
+                <div style={{ fontSize: 10, color: colors.textTertiary, textAlign: 'center', marginBottom: 2 }}>滑动</div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button type="button" onClick={() => handleSwipe('up')} style={btnStyle} title="上滑"><ArrowUp size={14} /></button>
                   <button type="button" onClick={() => handleSwipe('down')} style={btnStyle} title="下滑"><ArrowDown size={14} /></button>
@@ -960,11 +961,11 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
               </div>
 
               {/* Divider */}
-              <div style={{ width: 1, height: 60, background: theme.border }} />
+              <div style={{ width: 1, height: 60, background: colors.border }} />
 
               {/* Quick action buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ fontSize: 10, color: theme.textTertiary, textAlign: 'center', marginBottom: 2 }}>快捷</div>
+                <div style={{ fontSize: 10, color: colors.textTertiary, textAlign: 'center', marginBottom: 2 }}>快捷</div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button
                     type="button"
@@ -992,10 +993,10 @@ export const AndroidPage: React.FC<AndroidPageProps> = ({
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: theme.textTertiary }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: colors.textTertiary }}>
             <Smartphone size={56} style={{ marginBottom: 16, opacity: 0.3 }} />
-            <div style={{ fontSize: 16, marginBottom: 8, color: theme.textSecondary }}>连接一个 Android 设备</div>
-            <div style={{ fontSize: 12, color: theme.textTertiary }}>
+            <div style={{ fontSize: 16, marginBottom: 8, color: colors.textSecondary }}>连接一个 Android 设备</div>
+            <div style={{ fontSize: 12, color: colors.textTertiary }}>
               从左侧列表选择设备或点击「局域网发现」
             </div>
           </div>

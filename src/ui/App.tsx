@@ -17,7 +17,7 @@ import type { SavedConn, ComPortInfo, IRData } from './types';
 // Lucide icons for consistent icon set
 import {
   Monitor, Terminal as TerminalIcon, Cable, Command, Globe, Smartphone, Tv, Settings,
-  Plus, Search, X, Minus, Square, Activity, FileText, Folder, LogOut, Moon, Sun, Info,
+  Plus, Search, X, Minus, Square, Activity, FileText, Folder, LogOut, Info,
   ZoomIn, ZoomOut, RefreshCw, RotateCcw, Server, Database, Monitor as MonitorIcon, TerminalSquare, Hash,
   Palette,
 } from 'lucide-react';
@@ -28,22 +28,22 @@ export type TabType = 'ssh' | 'serial' | 'powershell' | 'cmd' | 'websocket' | 'a
 // Helper: wrap Lucide icon in a fixed-size centering box
 // Lucide SVG content sits slightly high within the 24x24 viewBox.
 // paddingTop shifts icon down to align visual center with text baseline.
-const iconWrap = (icon: React.ReactNode) => (
+const iconWrap = (icon: React.ReactNode, color?: string) => (
   <span style={{ width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-    <span style={{ paddingTop: 0.8 }}>{icon}</span>
+    <span style={{ paddingTop: 0.8, color: color || 'inherit' }}>{icon}</span>
   </span>
 );
 
-// Tab config with Lucide icons
-const TABS: { id: TabType; label: string; icon: React.ReactNode }[] = [
-  { id: 'ssh', label: 'SSH', icon: iconWrap(<Monitor size={16} />) },
-  { id: 'serial', label: 'Serial', icon: iconWrap(<Cable size={16} />) },
-  { id: 'powershell', label: 'PowerShell', icon: iconWrap(<TerminalIcon size={16} />) },
-  { id: 'cmd', label: 'Bash', icon: iconWrap(<Command size={16} />) },
-  { id: 'websocket', label: 'WebSocket', icon: iconWrap(<Globe size={16} />) },
-  { id: 'android', label: 'Android', icon: iconWrap(<Smartphone size={16} />) },
-  { id: 'ir', label: 'IR', icon: iconWrap(<Tv size={16} />) },
-  { id: 'settings', label: 'Settings', icon: iconWrap(<Settings size={16} />) },
+// Tab config with Lucide icon components (not pre-rendered, to allow dynamic coloring)
+const TABS: { id: TabType; label: string; IconComponent: React.ComponentType<{size: number}> }[] = [
+  { id: 'ssh', label: 'SSH', IconComponent: Monitor },
+  { id: 'serial', label: 'Serial', IconComponent: Cable },
+  { id: 'powershell', label: 'PowerShell', IconComponent: TerminalIcon },
+  { id: 'cmd', label: 'Bash', IconComponent: Command },
+  { id: 'websocket', label: 'WebSocket', IconComponent: Globe },
+  { id: 'android', label: 'Android', IconComponent: Smartphone },
+  { id: 'ir', label: 'IR', IconComponent: Tv },
+  { id: 'settings', label: 'Settings', IconComponent: Settings },
 ];
 
 // ============================================================
@@ -51,7 +51,9 @@ const TABS: { id: TabType; label: string; icon: React.ReactNode }[] = [
 // ============================================================
 
 export default function App() {
-  const { toggleTheme, theme, styles, themeName, colorScheme, setColorScheme, availableSchemes } = useTheme();
+  const { theme, styles, designTheme, setDesignTheme, availableDesignThemes } = useTheme();
+  // Destructure colors for convenience - theme.colors has all color tokens
+  const colors = theme.colors;
   
   // State
   const [activeTab, setActiveTab] = useState<TabType>('ssh');
@@ -102,14 +104,10 @@ export default function App() {
         e.preventDefault();
         setShowModal(true);
       }
-      if (ctrl && e.key === 't') {
-        e.preventDefault();
-        toggleTheme();
-      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleTheme]);
+  }, []);
 
   const [windowCaptureMode, setWindowCaptureMode] = useState<'auto' | 'foreground' | 'gdi'>('auto');
 
@@ -239,7 +237,7 @@ export default function App() {
       alignItems: 'center', 
       justifyContent: 'center',
       height: '100%',
-      color: theme.textTertiary,
+      color: colors.textTertiary,
     }}>
       <Activity size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
       <div style={{ fontSize: 14, marginBottom: 4 }}>Select a connection to get started</div>
@@ -252,12 +250,12 @@ export default function App() {
     icon: React.ReactNode; label: string; description: string; children: React.ReactNode;
   }) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${theme.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${colors.border}` }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ color: theme.textSecondary, marginTop: 2, flexShrink: 0 }}>{icon}</div>
+          <div style={{ color: colors.textSecondary, marginTop: 2, flexShrink: 0 }}>{icon}</div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: theme.text }}>{label}</div>
-            <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>{description}</div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: colors.text }}>{label}</div>
+            <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>{description}</div>
           </div>
         </div>
         <div style={{ flexShrink: 0, marginLeft: 16 }}>{children}</div>
@@ -267,72 +265,121 @@ export default function App() {
 
   // Render Settings content
   const renderSettings = () => (
-    <div style={{ padding: '24px 32px', maxWidth: 600 }}>
-      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: theme.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ padding: '24px 32px', flex: 1 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: colors.text, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Settings size={20} style={{ verticalAlign: 'middle' }} /> Settings
       </h2>
 
-      {/* Theme */}
-      <SettingsRow icon={themeName === 'dark' ? <Moon size={16} style={{ verticalAlign: 'middle' }} /> : <Sun size={16} style={{ verticalAlign: 'middle' }} />} label="Theme" description="Switch between light and dark mode">
-        <button type="button" style={{ ...styles.button, minWidth: 100, display: 'flex', alignItems: 'center', gap: 6 }} onClick={toggleTheme}>
-          {themeName === 'dark' ? <><Moon size={14} style={{ verticalAlign: 'middle' }} /> Dark</> : <><Sun size={14} style={{ verticalAlign: 'middle' }} /> Light</>}
-        </button>
-      </SettingsRow>
-
-      {/* Color Scheme */}
-      <SettingsRow icon={<Palette size={16} style={{ verticalAlign: 'middle' }} />} label="Color Scheme" description="Adjust UI accent colors (Morandi muted tones)">
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {availableSchemes.map(scheme => {
-            const isActive = colorScheme.id === scheme.id;
+      {/* Design Theme - 4 row layout */}
+      <div style={{ padding: '12px 0', borderBottom: `1px solid ${colors.border}` }}>
+        {/* Row 1: Label with icon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+          <Palette size={16} style={{ color: colors.textSecondary, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, fontWeight: 500, color: colors.text }}>Design Theme</span>
+        </div>
+        {/* Row 2: Description */}
+        <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 10, paddingLeft: 28 }}>
+          Choose a design theme for the interface
+        </div>
+        {/* Row 3: Dark Themes */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingLeft: 28, marginBottom: 8 }}>
+          {availableDesignThemes.filter(t => !t.id.includes('light')).map(t => {
+            const isActive = designTheme?.id === t.id;
             return (
               <button
-                key={scheme.id}
+                key={t.id}
                 type="button"
-                onClick={() => setColorScheme(scheme.id)}
-                title={scheme.description}
+                onClick={() => setDesignTheme(t)}
+                title={t.description}
                 style={{
-                  padding: '5px 12px',
-                  fontSize: 11,
-                  border: `1px solid ${isActive ? theme.primary : theme.border}`,
-                  borderRadius: 6,
-                  backgroundColor: isActive ? theme.primary + '18' : theme.bg,
-                  color: isActive ? theme.primary : theme.text,
+                  padding: '6px 14px',
+                  fontSize: 12,
+                  border: `1px solid ${isActive ? colors.primary : colors.border}`,
+                  borderRadius: theme.radius.md,
+                  backgroundColor: isActive ? colors.primary + '25' : colors.bgTertiary,
+                  color: isActive ? colors.primary : colors.text,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
+                  gap: 8,
                   transition: 'all 0.15s',
-                  fontWeight: isActive ? 500 : 400,
+                  fontWeight: isActive ? 600 : 400,
+                  boxShadow: isActive ? `0 0 0 2px ${colors.primary}35` : 'none',
                 }}
               >
-                {/* Swatch dots */}
-                <span style={{ display: 'flex', gap: 4 }}>
-                  {scheme.swatches.map((color, i) => (
+                <span style={{ display: 'flex', gap: 3 }}>
+                  {t.swatches.map((color, i) => (
                     <span
                       key={i}
                       style={{
-                        width: 10,
-                        height: 10,
+                        width: 8,
+                        height: 8,
                         borderRadius: '50%',
                         backgroundColor: color,
                         display: 'inline-block',
-                        border: '1px solid rgba(128,128,128,0.3)',
+                        border: '1px solid rgba(128,128,128,0.4)',
                       }}
                     />
                   ))}
                 </span>
-                {scheme.label}
+                {t.name}
               </button>
             );
           })}
         </div>
-      </SettingsRow>
+        {/* Row 4: Light Themes */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingLeft: 28 }}>
+          {availableDesignThemes.filter(t => t.id.includes('light')).map(t => {
+            const isActive = designTheme?.id === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setDesignTheme(t)}
+                title={t.description}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: 12,
+                  border: `1px solid ${isActive ? colors.primary : colors.border}`,
+                  borderRadius: theme.radius.md,
+                  backgroundColor: isActive ? colors.primary + '25' : colors.bgTertiary,
+                  color: isActive ? colors.primary : colors.text,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.15s',
+                  fontWeight: isActive ? 600 : 400,
+                  boxShadow: isActive ? `0 0 0 2px ${colors.primary}35` : 'none',
+                }}
+              >
+                <span style={{ display: 'flex', gap: 3 }}>
+                  {t.swatches.map((color, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: color,
+                        display: 'inline-block',
+                        border: '1px solid rgba(128,128,128,0.4)',
+                      }}
+                    />
+                  ))}
+                </span>
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Zoom */}
       <SettingsRow icon={<ZoomIn size={16} style={{ verticalAlign: 'middle' }} />} label="Zoom" description="Adjust UI scale">
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <button type="button" title="Zoom out" onClick={() => { const v = Math.max(50, zoom - 10); setZoom(v); localStorage.setItem('seelelink-zoom', String(v)); }} style={{ ...styles.button, width: 28, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ZoomOut size={14} style={{ verticalAlign: 'middle' }} /></button>
-          <span style={{ fontSize: 12, color: theme.text, minWidth: 40, textAlign: 'center' }}>{zoom}%</span>
+          <span style={{ fontSize: 12, color: colors.text, minWidth: 40, textAlign: 'center' }}>{zoom}%</span>
           <button type="button" title="Zoom in" onClick={() => { const v = Math.min(200, zoom + 10); setZoom(v); localStorage.setItem('seelelink-zoom', String(v)); }} style={{ ...styles.button, width: 28, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ZoomIn size={14} style={{ verticalAlign: 'middle' }} /></button>
           <button type="button" title="Reset zoom" onClick={() => { setZoom(100); localStorage.setItem('seelelink-zoom', '100'); }} style={{ ...styles.button, width: 28, height: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}><Minus size={14} style={{ verticalAlign: 'middle' }} /></button>
         </div>
@@ -341,7 +388,7 @@ export default function App() {
       {/* Control API */}
       <SettingsRow icon={<Server size={16} style={{ verticalAlign: 'middle' }} />} label="Control API" description="Remote control endpoint (127.0.0.1:9380)">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: theme.success + '22', color: theme.success }}>Enabled</span>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: colors.success + '22', color: colors.success }}>Enabled</span>
           <button type="button" title="Restart Control API" style={{ ...styles.button, height: 26, padding: '0 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
             window.electronAPI?.controlApiRestart?.();
           }}><RotateCcw size={11} style={{ verticalAlign: 'middle' }} /> Restart</button>
@@ -351,7 +398,7 @@ export default function App() {
       {/* MCP Server */}
       <SettingsRow icon={<TerminalSquare size={16} style={{ verticalAlign: 'middle' }} />} label="MCP Server" description="Model Context Protocol server (127.0.0.1:9381)">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: theme.success + '22', color: theme.success }}>Enabled</span>
+          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, backgroundColor: colors.success + '22', color: colors.success }}>Enabled</span>
           <button type="button" title="Restart MCP Server" style={{ ...styles.button, height: 26, padding: '0 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }} onClick={() => {
             window.electronAPI?.mcpApiRestart?.();
           }}><RotateCcw size={11} style={{ verticalAlign: 'middle' }} /> Restart</button>
@@ -376,10 +423,10 @@ export default function App() {
               style={{
                 padding: '4px 10px',
                 fontSize: 11,
-                border: `1px solid ${windowCaptureMode === key ? theme.primary || '#4a9eff' : theme.border}`,
+                border: `1px solid ${windowCaptureMode === key ? colors.primary || '#4a9eff' : colors.border}`,
                 borderRadius: 4,
-                backgroundColor: windowCaptureMode === key ? (theme.primary || '#4a9eff') + '22' : theme.bg,
-                color: windowCaptureMode === key ? (theme.primary || '#4a9eff') : theme.text,
+                backgroundColor: windowCaptureMode === key ? (colors.primary || '#4a9eff') + '22' : colors.bg,
+                color: windowCaptureMode === key ? (colors.primary || '#4a9eff') : colors.text,
                 cursor: 'pointer',
               }}
             >
@@ -402,26 +449,26 @@ export default function App() {
       case 'android':
         return (
           <div style={{ padding: '24px 32px', maxWidth: 600 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: theme.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: colors.text, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Smartphone size={20} /> Android
             </h2>
-            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', color: theme.textSecondary }}>
+            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', color: colors.textSecondary }}>
               <Smartphone size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
               <div style={{ fontSize: 14, marginBottom: 8 }}>Android ADB Connection</div>
-              <div style={{ fontSize: 12, color: theme.textTertiary }}>Connect via ADB (Android Debug Bridge)</div>
+              <div style={{ fontSize: 12, color: colors.textTertiary }}>Connect via ADB (Android Debug Bridge)</div>
             </div>
           </div>
         );
       case 'ir':
         return (
           <div style={{ padding: '24px 32px', maxWidth: 600 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: theme.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 20, color: colors.text, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Tv size={20} /> IR Control
             </h2>
-            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', color: theme.textSecondary }}>
+            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', color: colors.textSecondary }}>
               <Tv size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
               <div style={{ fontSize: 14, marginBottom: 8 }}>IR Infrared Control</div>
-              <div style={{ fontSize: 12, color: theme.textTertiary }}>Control devices via infrared signals</div>
+              <div style={{ fontSize: 12, color: colors.textTertiary }}>Control devices via infrared signals</div>
             </div>
           </div>
         );
@@ -429,11 +476,11 @@ export default function App() {
         return (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            height: '100%', color: theme.textSecondary,
+            height: '100%', color: colors.textSecondary,
           }}>
             <Globe size={48} style={{ opacity: 0.3, marginBottom: 16 }} />
             <div style={{ fontSize: 14, marginBottom: 4 }}>WebSocket Connection</div>
-            <div style={{ fontSize: 12, color: theme.textTertiary }}>Connect to WebSocket servers</div>
+            <div style={{ fontSize: 12, color: colors.textTertiary }}>Connect to WebSocket servers</div>
           </div>
         );
       default:
@@ -447,52 +494,52 @@ export default function App() {
       {/* Title Bar */}
       <div style={{ ...styles.titleBar, padding: '0 16px' }}>
         <div style={styles.logo}>
-          <Activity size={16} style={{ color: theme.primary }} />
+          <Activity size={16} style={{ color: colors.primary }} />
           <span>SeeleLink</span>
         </div>
         
         <div style={{ ...styles.menuBar, marginLeft: 24 }} role="menubar">
           <div style={{ position: 'relative' }}>
-            <button role="menuitem" aria-haspopup="true" aria-expanded={fileMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: fileMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setFileMenuOpen(!fileMenuOpen); setEditMenuOpen(false); setViewMenuOpen(false); setHelpMenuOpen(false); }}>File</button>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={fileMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: fileMenuOpen ? colors.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setFileMenuOpen(!fileMenuOpen); setEditMenuOpen(false); setViewMenuOpen(false); setHelpMenuOpen(false); }}>File</button>
             {fileMenuOpen && (
-              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 200, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 6, padding: 4, minWidth: 200, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
                 <MenuButton label="New Connection" shortcut="Ctrl+N" icon={<Plus size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => { setShowModal(true); setFileMenuOpen(false); }} />
                 <MenuButton label="Import Connections..." icon={<Folder size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => setFileMenuOpen(false)} />
                 <MenuButton label="Export Connections..." icon={<FileText size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => setFileMenuOpen(false)} />
-                <div style={{ height: 1, backgroundColor: theme.border, margin: '4px 0' }} />
+                <div style={{ height: 1, backgroundColor: colors.border, margin: '4px 0' }} />
                 <MenuButton label="Exit" shortcut="Alt+F4" icon={<LogOut size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => window.electronAPI?.windowClose()} />
               </div>
             )}
           </div>
 
           <div style={{ position: 'relative' }}>
-            <button role="menuitem" aria-haspopup="true" aria-expanded={editMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: editMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setEditMenuOpen(!editMenuOpen); setFileMenuOpen(false); setViewMenuOpen(false); setHelpMenuOpen(false); }}>Edit</button>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={editMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: editMenuOpen ? colors.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setEditMenuOpen(!editMenuOpen); setFileMenuOpen(false); setViewMenuOpen(false); setHelpMenuOpen(false); }}>Edit</button>
             {editMenuOpen && (
-              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
                 <MenuButton label="Copy" shortcut="Ctrl+C" />
                 <MenuButton label="Paste" shortcut="Ctrl+V" />
-                <div style={{ height: 1, backgroundColor: theme.border, margin: '4px 0' }} />
+                <div style={{ height: 1, backgroundColor: colors.border, margin: '4px 0' }} />
                 <MenuButton label="Select All" shortcut="Ctrl+A" />
               </div>
             )}
           </div>
 
           <div style={{ position: 'relative' }}>
-            <button role="menuitem" aria-haspopup="true" aria-expanded={viewMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: viewMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setViewMenuOpen(!viewMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false); setHelpMenuOpen(false); }}>View</button>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={viewMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: viewMenuOpen ? colors.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setViewMenuOpen(!viewMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false); setHelpMenuOpen(false); }}>View</button>
             {viewMenuOpen && (
-              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
-                <MenuButton label="Toggle Theme" shortcut="Ctrl+T" icon={<Moon size={14} style={{ verticalAlign: 'middle' }} />} onClick={() => { toggleTheme(); setViewMenuOpen(false); }} />
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+                <MenuButton label="Settings" onClick={() => { setActiveTab('settings'); setViewMenuOpen(false); }} />
               </div>
             )}
           </div>
 
           <div style={{ position: 'relative' }}>
-            <button role="menuitem" aria-haspopup="true" aria-expanded={helpMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: helpMenuOpen ? theme.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setHelpMenuOpen(!helpMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false); setViewMenuOpen(false); }}>Help</button>
+            <button role="menuitem" aria-haspopup="true" aria-expanded={helpMenuOpen ? "true" : "false"} style={{ ...styles.menuItem, backgroundColor: helpMenuOpen ? colors.bgHover : 'transparent' }} onClick={(e) => { e.stopPropagation(); setHelpMenuOpen(!helpMenuOpen); setFileMenuOpen(false); setEditMenuOpen(false); setViewMenuOpen(false); }}>Help</button>
             {helpMenuOpen && (
-              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+              <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 6, padding: 4, minWidth: 180, zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
                 <MenuButton label="Documentation" />
                 <MenuButton label="Report Issue" />
-                <div style={{ height: 1, backgroundColor: theme.border, margin: '4px 0' }} />
+                <div style={{ height: 1, backgroundColor: colors.border, margin: '4px 0' }} />
                 <MenuButton label="About SeeleLink" icon={<Info size={14} style={{ verticalAlign: 'middle' }} />} />
               </div>
             )}
@@ -509,13 +556,16 @@ export default function App() {
       </div>
 
       {/* Protocol Tab Bar */}
-      <div role="tablist" aria-label="Connection type" style={{ display: 'flex', backgroundColor: theme.bgSecondary, borderBottom: `1px solid ${theme.border}`, padding: '0 16px', gap: 2, overflowX: 'auto' }}>
-        {TABS.map(tab => (
-          <button role="tab" key={tab.id} aria-selected={activeTab === tab.id ? "true" : "false"} onClick={() => setActiveTab(tab.id)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '0 16px', fontSize: 13, color: activeTab === tab.id ? theme.primary : theme.textSecondary, backgroundColor: activeTab === tab.id ? theme.bg : 'transparent', border: 'none', borderBottom: activeTab === tab.id ? `2px solid ${theme.primary}` : '2px solid transparent', cursor: 'pointer', transition: 'all 0.1s ease', height: 40, whiteSpace: 'nowrap' as const }}>
-            {tab.icon}
-            <span style={{ lineHeight: 1 }}>{tab.label}</span>
-          </button>
-        ))}
+      <div role="tablist" aria-label="Connection type" style={{ display: 'flex', backgroundColor: colors.bgSecondary, borderBottom: `1px solid ${colors.border}`, padding: '0 16px', gap: 2, overflowX: 'auto' }}>
+        {TABS.map(tab => {
+          const Icon = tab.IconComponent;
+          return (
+            <button role="tab" key={tab.id} aria-selected={activeTab === tab.id ? "true" : "false"} onClick={() => setActiveTab(tab.id)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '0 16px', fontSize: 13, color: colors.primary, backgroundColor: activeTab === tab.id ? colors.bg : 'transparent', border: 'none', borderBottom: activeTab === tab.id ? `2px solid ${colors.primary}` : '2px solid transparent', cursor: 'pointer', transition: 'all 0.1s ease', height: 40, whiteSpace: 'nowrap' as const }}>
+              <Icon size={16} color={colors.primary} />
+              <span style={{ lineHeight: 1 }}>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Main Content */}
@@ -528,25 +578,25 @@ export default function App() {
               <button style={styles.buttonAdd} onClick={() => setShowModal(true)} title="New Connection"><Plus size={14} /></button>
             </div>
 
-            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${theme.border}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 4, padding: '4px 8px' }}>
-                <Search size={14} style={{ color: theme.textTertiary }} />
-                <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: theme.text }} />
+            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${colors.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, backgroundColor: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 4, padding: '4px 8px' }}>
+                <Search size={14} style={{ color: colors.textTertiary }} />
+                <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: colors.text }} />
               </div>
             </div>
             <div style={styles.sidebarContent}>
               {activeTabConns.length === 0 ? (
                 <div style={{ padding: '20px 16px', textAlign: 'center' as const }}>
-                  <div style={{ fontSize: 12, color: theme.textTertiary, marginBottom: 12 }}>{searchQuery ? 'No matches found' : 'No connections'}</div>
+                  <div style={{ fontSize: 12, color: colors.textTertiary, marginBottom: 12 }}>{searchQuery ? 'No matches found' : 'No connections'}</div>
                   <button style={{ ...styles.button, width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setShowModal(true)}><Plus size={14} style={{ verticalAlign: 'middle' }} /> Add Connection</button>
                 </div>
               ) : (
                 <div role="list">
                   {activeTabConns.map(conn => (
                     <div role="listitem" key={conn.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', cursor: 'pointer', backgroundColor: 'transparent', transition: 'background-color 0.1s' }} onClick={() => openConnection(conn)}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: connTabs.some(t => t.conn.id === conn.id && t.isConnected) ? theme.success : theme.textTertiary, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontSize: 13, color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{conn.name}</span>
-                      <button aria-label="Delete connection" onClick={e => { e.stopPropagation(); deleteConnection(conn.id); }} style={{ width: 20, height: 20, border: 'none', borderRadius: 4, backgroundColor: 'transparent', color: theme.textTertiary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12} style={{ verticalAlign: 'middle' }} /></button>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: connTabs.some(t => t.conn.id === conn.id && t.isConnected) ? colors.success : colors.textTertiary, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: 13, color: colors.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{conn.name}</span>
+                      <button aria-label="Delete connection" onClick={e => { e.stopPropagation(); deleteConnection(conn.id); }} style={{ width: 20, height: 20, border: 'none', borderRadius: 4, backgroundColor: 'transparent', color: colors.textTertiary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12} style={{ verticalAlign: 'middle' }} /></button>
                     </div>
                   ))}
                 </div>
@@ -566,15 +616,15 @@ export default function App() {
                   <div
                     key={tab.id}
                     onClick={() => setActiveConnTabId(tab.id)}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = theme.bgHover; }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = colors.bgHover; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 8,
                       padding: '8px 16px', fontSize: 12,
-                      color: isActive ? theme.text : theme.textSecondary,
-                      borderBottom: isActive ? `2px solid ${theme.primary}` : '2px solid transparent',
+                      color: isActive ? colors.text : colors.textSecondary,
+                      borderBottom: isActive ? `2px solid ${colors.primary}` : '2px solid transparent',
                       cursor: 'pointer', whiteSpace: 'nowrap', height: 40,
-                      backgroundColor: isActive ? theme.bg : 'transparent',
+                      backgroundColor: isActive ? colors.bg : 'transparent',
                       transition: 'background-color 0.1s, color 0.1s',
                     }}
                   >
@@ -629,9 +679,9 @@ export default function App() {
         <span>•</span>
         <span style={styles.statusItem}>{activeTab.toUpperCase()}</span>
         <span>•</span>
-        <span style={{ ...styles.statusItem, color: connTabs.length > 0 ? theme.success : theme.textTertiary }}>● {connTabs.length > 0 ? 'Connected' : 'Disconnected'}</span>
+        <span style={{ ...styles.statusItem, color: connTabs.length > 0 ? colors.success : colors.textTertiary }}>● {connTabs.length > 0 ? 'Connected' : 'Disconnected'}</span>
         <div style={{ flex: 1 }} />
-        <span style={styles.statusItem}>{themeName}</span>
+        <span style={styles.statusItem}>{designTheme?.name || 'Default'}</span>
         <span>•</span>
         <span style={styles.statusItem}>{zoom}%</span>
         <span>•</span>
@@ -666,6 +716,7 @@ export default function App() {
 // ============================================================
 function SessionLogSettings() {
   const { theme, styles } = useTheme();
+  const colors = theme.colors;
   const [enabled, setEnabled] = React.useState(true);
   const [logPath, setLogPath] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -693,11 +744,11 @@ function SessionLogSettings() {
   };
 
   return (
-    <div style={{ padding: '12px 0', borderBottom: `1px solid ${theme.border}` }}>
+    <div style={{ padding: '12px 0', borderBottom: `1px solid ${colors.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: theme.text }}>Session Logs</div>
-          <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>Record session output to log files</div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: colors.text }}>Session Logs</div>
+          <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Record session output to log files</div>
         </div>
         <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
           <input
@@ -710,13 +761,13 @@ function SessionLogSettings() {
         </label>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 11, color: theme.textSecondary }}>Log Path:</span>
+        <span style={{ fontSize: 11, color: colors.textSecondary }}>Log Path:</span>
         <input
           type="text"
           value={logPath}
           onChange={e => save({ path: e.target.value })}
           placeholder="默认: ~/.seelelink/logs"
-          style={{ flex: 1, padding: '6px 10px', fontSize: 12, backgroundColor: theme.bg, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 4, outline: 'none' }}
+          style={{ flex: 1, padding: '6px 10px', fontSize: 12, backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}`, borderRadius: 4, outline: 'none' }}
         />
         <button onClick={handleBrowse} style={{ ...styles.button, height: 28 }}>Browse</button>
         <button
@@ -735,12 +786,13 @@ function SessionLogSettings() {
 
 function MenuButton({ label, shortcut, icon, onClick }: { label: string; shortcut?: string; icon?: React.ReactNode; onClick?: () => void }) {
   const { theme } = useTheme();
+  const colors = theme.colors;
   return (
-    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 12px', textAlign: 'left' as const, background: 'none', border: 'none', color: theme.text, fontSize: 13, borderRadius: 4, cursor: 'pointer' }}
-      onMouseEnter={e => (e.currentTarget.style.backgroundColor = theme.bgHover)}
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 12px', textAlign: 'left' as const, background: 'none', border: 'none', color: colors.text, fontSize: 13, borderRadius: 4, cursor: 'pointer' }}
+      onMouseEnter={e => (e.currentTarget.style.backgroundColor = colors.bgHover)}
       onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{icon}<span>{label}</span></span>
-      {shortcut && <span style={{ color: theme.textTertiary, fontSize: 11 }}>{shortcut}</span>}
+      {shortcut && <span style={{ color: colors.textTertiary, fontSize: 11 }}>{shortcut}</span>}
     </button>
   );
 }
@@ -750,6 +802,7 @@ function NewConnectionModal({ activeTab, form, setForm, availableComPorts, setAv
   activeTab: TabType; form: SavedConn; setForm: React.Dispatch<React.SetStateAction<SavedConn | null>>; availableComPorts: ComPortInfo[]; setAvailableComPorts: (ports: ComPortInfo[]) => void; onSave: (conn: SavedConn) => void; onClose: () => void;
 }) {
   const { theme, styles } = useTheme();
+  const colors = theme.colors;
   const [localForm, setLocalForm] = useState(form);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -800,13 +853,13 @@ function NewConnectionModal({ activeTab, form, setForm, availableComPorts, setAv
           <>
             <div style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: theme.textSecondary, display: 'flex', alignItems: 'center', gap: 6 }}><Cable size={11} style={{ opacity: 0.7, verticalAlign: 'middle' }} /> Port</div>
+                <div style={{ fontSize: 11, fontWeight: 500, color: colors.textSecondary, display: 'flex', alignItems: 'center', gap: 6 }}><Cable size={11} style={{ opacity: 0.7, verticalAlign: 'middle' }} /> Port</div>
                 <button
                   type="button"
                   title="Refresh ports"
                   onClick={refreshPorts}
                   disabled={refreshing}
-                  style={{ width: 26, height: 26, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 4, color: refreshing ? theme.textTertiary : theme.textSecondary }}
+                  style={{ width: 26, height: 26, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'none', border: `1px solid ${colors.border}`, borderRadius: 4, color: refreshing ? colors.textTertiary : colors.textSecondary }}
                 >
                   <RefreshCw size={13} style={refreshing ? { animation: 'spin 1s linear infinite', verticalAlign: 'middle' } : { verticalAlign: 'middle' }} />
                 </button>
@@ -827,7 +880,7 @@ function NewConnectionModal({ activeTab, form, setForm, availableComPorts, setAv
                 ))}
               </select>
               {availableComPorts.length === 0 && (
-                <div style={{ fontSize: 10, color: theme.textTertiary, marginTop: 4 }}>No COM ports found</div>
+                <div style={{ fontSize: 10, color: colors.textTertiary, marginTop: 4 }}>No COM ports found</div>
               )}
             </div>
             <SimpleInput label="Baud Rate" icon={<Hash size={11} />} value={localForm.baudRate} onChange={v => setLocalForm({ ...localForm, baudRate: v })} placeholder="115200" />
@@ -847,9 +900,10 @@ function SimpleInput({ label, value, onChange, placeholder, type = 'text', icon 
   label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; icon?: React.ReactNode;
 }) {
   const { theme, styles } = useTheme();
+  const colors = theme.colors;
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: theme.textSecondary, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>{icon && <span style={{ opacity: 0.7 }}>{icon}</span>}{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 500, color: colors.textSecondary, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>{icon && <span style={{ opacity: 0.7 }}>{icon}</span>}{label}</div>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={styles.input} />
     </div>
   );
@@ -859,9 +913,10 @@ function SimpleSelect({ label, value, onChange, options, icon }: {
   label: string; value: string; onChange: (v: string) => void; options: string[]; icon?: React.ReactNode;
 }) {
   const { theme, styles } = useTheme();
+  const colors = theme.colors;
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: theme.textSecondary, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>{icon && <span style={{ opacity: 0.7 }}>{icon}</span>}{label}</div>
+      <div style={{ fontSize: 11, fontWeight: 500, color: colors.textSecondary, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>{icon && <span style={{ opacity: 0.7 }}>{icon}</span>}{label}</div>
       <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} style={styles.select}>
         <option value="">Select...</option>
         {options.map(port => <option key={port} value={port}>{port}</option>)}
